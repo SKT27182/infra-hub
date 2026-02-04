@@ -1,0 +1,1 @@
+"""Infra Hub Backend Application."""

@@ -1,0 +1,3 @@
+# Redis configuration placeholder
+# The default Redis configuration is used via command-line arguments in docker-compose.yml
+# Add custom configurations here if needed

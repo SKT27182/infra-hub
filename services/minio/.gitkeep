@@ -1,0 +1,2 @@
+# MinIO configuration placeholder
+# Volume mount for persistent storage is configured in docker-compose.yml
