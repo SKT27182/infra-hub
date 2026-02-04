@@ -6,7 +6,8 @@ help:
 	@echo ""
 	@echo "Usage:"
 	@echo "  make up        - Start all services"
-	@echo "  make down      - Stop all services"
+	@echo "  make down      - Stop docker services"
+	@echo "  make stop      - Stop all (Docker + Apps)"
 	@echo "  make restart   - Restart all services"
 	@echo "  make logs      - View logs (follow mode)"
 	@echo "  make ps        - Show service status"
@@ -35,6 +36,14 @@ up:
 
 down:
 	docker compose down
+
+stop:
+	@echo "Stopping Docker services..."
+	@docker compose down
+	@echo "Stopping backend and frontend processes..."
+	@-pkill -f "uvicorn app.main:app" || true
+	@-pkill -f "vite" || true
+	@echo "All services stopped."
 
 restart:
 	docker compose restart
@@ -90,10 +99,18 @@ up-minio:
 # Development
 # =============================================================================
 dev-backend:
-	cd backend && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 dev-frontend:
 	cd frontend && pnpm dev
 
-make dev:
-	up & make dev-backend & make dev-frontend
+dev:
+	@echo "Starting all services..."
+	@make up
+	@echo "Waiting for Docker services to start..."
+	@sleep 5
+	@echo "Starting backend and frontend..."
+	@trap 'kill 0' SIGINT; \
+		(cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000) & \
+		(cd frontend && pnpm dev) & \
+		wait
