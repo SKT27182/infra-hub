@@ -1,13 +1,14 @@
 from typing import Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from services.postgres import PostgresService
 from services.redis import RedisService
 from services.minio import MinIOService
 from services.mongodb import MongoDBService
 from services.qdrant import QdrantService
+from services.auth import get_current_user
 
-router = APIRouter(prefix="/services")
+router = APIRouter(prefix="/services", dependencies=[Depends(get_current_user)])
 
 # Instantiate services
 postgres = PostgresService()

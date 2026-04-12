@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     minio_user: str = "admin"
     minio_password: str = "adminadmin"
 
+    # JWT Authentication
+    jwt_secret: str = "secret-key-change-this-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24  # 24 hours
+
     @property
     def postgres_url(self) -> str:
         """PostgreSQL connection URL."""
