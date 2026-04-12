@@ -3,43 +3,24 @@ services:
   # PostgreSQL - Primary Relational Database
   # =============================================================================
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: infra-postgres
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-admin}
-      POSTGRES_DB: ${POSTGRES_DB:-infra}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-main_db}
     ports:
-      - "5432:5432"
-    networks:
-      - infra-network
+      - "${POSTGRES_PORT:-54321}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-main_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: infra-pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@infra.local}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    ports:
-      - "5050:80"
+      - ./volumes/postgres:/var/lib/postgresql/data
     networks:
       - infra-network
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   # =============================================================================
   # Redis - In-Memory Cache & Pub/Sub
@@ -47,97 +28,67 @@ services:
   redis:
     image: redis:7-alpine
     container_name: infra-redis
-    restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:-admin} --appendonly yes
-    volumes:
-      - redis_data:/data
+    restart: always
+    command: redis-server --requirepass ${REDIS_PASSWORD:-password}
     ports:
-      - "6379:6379"
-    networks:
-      - infra-network
+      - "${REDIS_PORT:-63791}:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-admin}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-password}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  redisinsight:
-    image: redis/redisinsight:latest
-    container_name: infra-redisinsight
-    restart: unless-stopped
     volumes:
-      - redisinsight_data:/data
-    ports:
-      - "5540:5540"
+      - ./volumes/redis:/data
     networks:
       - infra-network
-    depends_on:
-      redis:
-        condition: service_healthy
 
   # =============================================================================
   # MongoDB - Document Database
   # =============================================================================
   mongodb:
-    image: mongo:7
+    image: mongo:latest
     container_name: infra-mongodb
-    restart: unless-stopped
+    restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-admin}
-    volumes:
-      - mongodb_data:/data/db
-      - ./services/mongodb/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-password}
     ports:
-      - "27017:27017"
-    networks:
-      - infra-network
+      - "${MONGODB_PORT:-27018}:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  mongo-express:
-    image: mongo-express:latest
-    container_name: infra-mongo-express
-    restart: unless-stopped
-    environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USER:-admin}
-      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:-admin}
-      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USER:-admin}:${MONGO_PASSWORD:-admin}@mongodb:27017/
-      ME_CONFIG_BASICAUTH: "true"
-      ME_CONFIG_BASICAUTH_USERNAME: ${ME_USER:-admin}
-      ME_CONFIG_BASICAUTH_PASSWORD: ${ME_PASSWORD:-admin}
-    ports:
-      - "8081:8081"
+    volumes:
+      - ./volumes/mongodb:/data/db
     networks:
       - infra-network
-    depends_on:
-      mongodb:
-        condition: service_healthy
 
   # =============================================================================
   # Qdrant - Vector Database
   # =============================================================================
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant
     container_name: infra-qdrant
-    restart: unless-stopped
+    restart: always
     environment:
-      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
-    volumes:
-      - qdrant_data:/qdrant/storage
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-password}
     ports:
-      - "6333:6333"
-      - "6334:6334"
-    networks:
-      - infra-network
+      - "${QDRANT_REST_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'echo > /dev/tcp/127.0.0.1/6333' || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./volumes/qdrant:/qdrant/storage
+    networks:
+      - infra-network
 
   # =============================================================================
   # MinIO - S3-Compatible Object Storage
@@ -145,23 +96,88 @@ services:
   minio:
     image: minio/minio:latest
     container_name: infra-minio
-    restart: unless-stopped
+    restart: always
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-adminadmin}
-    volumes:
-      - minio_data:/data
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD:-password123}
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    networks:
-      - infra-network
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./volumes/minio:/data
+    networks:
+      - infra-network
+
+  # =============================================================================
+  # Admin Tools
+  # =============================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: infra-pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@local.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-password}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "5050:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/misc/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - postgres
+    volumes:
+      - ./volumes/pgadmin:/var/lib/pgadmin
+    networks:
+      - infra-network
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: infra-redisinsight
+    restart: always
+    ports:
+      - "5540:5540"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:5540"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - redis
+    volumes:
+      - ./volumes/redisinsight:/data
+    networks:
+      - infra-network
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: infra-mongo-express
+    restart: always
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USER:-admin}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_PASSWORD:-password}
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -q --spider http://127.0.0.1:8081 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - mongodb
+    networks:
+      - infra-network
 
 # =============================================================================
 # Networks
@@ -170,22 +186,3 @@ networks:
   infra-network:
     name: infra-network
     driver: bridge
-
-# =============================================================================
-# Volumes
-# =============================================================================
-volumes:
-  postgres_data:
-    name: infra-postgres-data
-  pgadmin_data:
-    name: infra-pgadmin-data
-  redis_data:
-    name: infra-redis-data
-  redisinsight_data:
-    name: infra-redisinsight-data
-  mongodb_data:
-    name: infra-mongodb-data
-  qdrant_data:
-    name: infra-qdrant-data
-  minio_data:
-    name: infra-minio-data

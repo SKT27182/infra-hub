@@ -39,8 +39,9 @@ class DockerClient:
 
     @classmethod
     def list_containers(cls, all: bool = True) -> list[Container]:
-        """List all containers."""
-        return cls.get_client().containers.list(all=all)
+        """List all managed infrastructure containers (starting with 'infra-')."""
+        containers = cls.get_client().containers.list(all=all)
+        return [c for c in containers if c.name.startswith("infra-")]
 
     @classmethod
     def get_container(cls, container_id: str) -> Container | None:

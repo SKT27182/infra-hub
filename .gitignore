@@ -38,6 +38,8 @@ build/
 .mypy_cache/
 .ruff_cache/
 
+volumes
+
 # Node
 node_modules/
 .pnpm-store/

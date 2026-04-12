@@ -53,15 +53,15 @@ export function ContainersPage() {
               </Badge>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1 text-sm text-muted-foreground">
-                  <div>Image: <span className="font-mono">{container.image}</span></div>
-                  <div>ID: <span className="font-mono">{container.id}</span></div>
+                  <div>Image: <span className="font-mono break-all">{container.image}</span></div>
+                  <div>ID: <span className="font-mono break-all">{container.id}</span></div>
                   {container.ports.length > 0 && (
-                    <div>Ports: {container.ports.join(', ')}</div>
+                    <div className="flex flex-wrap gap-1">Ports: {container.ports.join(', ')}</div>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 self-end sm:self-auto">
                   {container.status !== 'running' ? (
                     <Button
                       size="sm"

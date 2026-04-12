@@ -41,7 +41,7 @@ stop:
 	@echo "Stopping Docker services..."
 	@docker compose down
 	@echo "Stopping backend and frontend processes..."
-	@-pkill -f "uvicorn app.main:app" || true
+	@-pkill -f "uvicorn main:app" || true
 	@-pkill -f "vite" || true
 	@echo "All services stopped."
 
@@ -99,7 +99,7 @@ up-minio:
 # Development
 # =============================================================================
 dev-backend:
-	cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+	cd backend && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8888
 
 dev-frontend:
 	cd frontend && pnpm dev
@@ -111,6 +111,6 @@ dev:
 	@sleep 5
 	@echo "Starting backend and frontend..."
 	@trap 'kill 0' SIGINT; \
-		(cd backend && .venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000) & \
+		(cd backend && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8888) & \
 		(cd frontend && pnpm dev) & \
 		wait

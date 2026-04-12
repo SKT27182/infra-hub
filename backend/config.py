@@ -18,29 +18,29 @@ class Settings(BaseSettings):
 
     # API Settings
     api_host: str = "0.0.0.0"
-    api_port: int = 8000
+    api_port: int = 8888
     debug: bool = False
 
     # CORS
-    cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:5173"]
 
     # PostgreSQL
     postgres_host: str = "localhost"
-    postgres_port: int = 5432
+    postgres_port: int = 54321
     postgres_user: str = "admin"
-    postgres_password: str = "admin"
-    postgres_db: str = "infra"
+    postgres_password: str = "password"
+    postgres_db: str = "main_db"
 
     # Redis
     redis_host: str = "localhost"
-    redis_port: int = 6379
-    redis_password: str = "admin"
+    redis_port: int = 63791
+    redis_password: str = "password"
 
     # MongoDB
     mongo_host: str = "localhost"
-    mongo_port: int = 27017
+    mongo_port: int = 27018
     mongo_user: str = "admin"
-    mongo_password: str = "admin"
+    mongo_password: str = "password"
 
     # Qdrant
     qdrant_host: str = "localhost"

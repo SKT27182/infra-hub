@@ -1,4 +1,4 @@
-const API_BASE = '/api'
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8888') + '/api'
 
 export interface ServiceStatus {
   name: string
@@ -8,7 +8,6 @@ export interface ServiceStatus {
   container_id: string | null
   container_name: string | null
   status: string
-  uptime: string | null
   ports: string[]
   admin_url: string | null
 }
@@ -29,6 +28,23 @@ export interface ServiceHealth {
 export interface ServiceInfo {
   name: string
   info: Record<string, unknown>
+}
+
+export interface PostgresQueryResponse {
+  success: boolean
+  database?: string
+  row_count?: number
+  columns?: string[]
+  rows?: Record<string, unknown>[]
+  error?: string
+}
+
+export interface ServiceQueryResponse {
+  success: boolean
+  error?: string
+  count?: number
+  result?: unknown
+  [key: string]: unknown
 }
 
 export interface ContainerInfo {
@@ -121,28 +137,78 @@ export async function restartContainer(id: string): Promise<ServiceAction> {
   return res.json()
 }
 
-// Deep service endpoints
-export async function getPostgresDatabases(): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${API_BASE}/services/postgres/databases`)
+// Deep service actions (simplified)
+export async function redisQuery(command: string, args: unknown[] = []): Promise<ServiceQueryResponse> {
+  const res = await fetch(`${API_BASE}/services/redis/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command, args }),
+  })
   return res.json()
 }
 
-export async function getRedisKeys(pattern = '*', count = 100): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${API_BASE}/services/redis/keys?pattern=${pattern}&count=${count}`)
+export async function mongodbQuery(action: string, params: Record<string, unknown> = {}): Promise<ServiceQueryResponse> {
+  const res = await fetch(`${API_BASE}/services/mongodb/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, params }),
+  })
   return res.json()
 }
 
-export async function getMongoDBDatabases(): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${API_BASE}/services/mongodb/databases`)
+export async function minioQuery(action: string, params: Record<string, unknown> = {}): Promise<ServiceQueryResponse> {
+  const res = await fetch(`${API_BASE}/services/minio/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, params }),
+  })
   return res.json()
 }
 
-export async function getQdrantCollections(): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${API_BASE}/services/qdrant/collections`)
+export async function qdrantQuery(action: string, params: Record<string, unknown> = {}): Promise<ServiceQueryResponse> {
+  const res = await fetch(`${API_BASE}/services/qdrant/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, params }),
+  })
   return res.json()
 }
 
-export async function getMinioBuckets(): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${API_BASE}/services/minio/buckets`)
+export async function createPostgresDB(name: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/services/postgres/databases/${name}`, { method: 'POST' })
+  return res.json()
+}
+
+export async function dropPostgresDB(name: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/services/postgres/databases/${name}`, { method: 'DELETE' })
+  return res.json()
+}
+
+export async function postgresQuery(query: string, database?: string): Promise<PostgresQueryResponse> {
+  const res = await fetch(`${API_BASE}/services/postgres/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, database }),
+  })
+  return res.json()
+}
+
+export async function createMinioBucket(name: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/services/minio/buckets/${name}`, { method: 'POST' })
+  return res.json()
+}
+
+export async function dropMinioBucket(name: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/services/minio/buckets/${name}`, { method: 'DELETE' })
+  return res.json()
+}
+
+export async function dropMongoDBDB(name: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/services/mongodb/databases/${name}`, { method: 'DELETE' })
+  return res.json()
+}
+
+export async function deleteQdrantCollection(name: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/services/qdrant/collections/${name}`, { method: 'DELETE' })
   return res.json()
 }

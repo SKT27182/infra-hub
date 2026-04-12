@@ -1,9 +1,9 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from '@/components/theme-provider'
 import { AppLayout } from '@/components/layout'
 import {
   DashboardPage,
-  ServicesPage,
   ServiceDetailPage,
   ContainersPage,
   PostgresPage,
@@ -25,22 +25,23 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppLayout>
-          <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/services" element={<ServicesPage />} />
-            <Route path="/services/:name" element={<ServiceDetailPage />} />
-            <Route path="/containers" element={<ContainersPage />} />
-            {/* Deep service pages */}
-            <Route path="/services/postgres" element={<PostgresPage />} />
-            <Route path="/services/redis" element={<RedisPage />} />
-            <Route path="/services/mongodb" element={<MongoDBPage />} />
-            <Route path="/services/qdrant" element={<QdrantPage />} />
-            <Route path="/services/minio" element={<MinIOPage />} />
-          </Routes>
-        </AppLayout>
-      </BrowserRouter>
+      <ThemeProvider defaultTheme="dark" storageKey="infra-hub-theme">
+        <BrowserRouter>
+          <AppLayout>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/services/:name" element={<ServiceDetailPage />} />
+              <Route path="/containers" element={<ContainersPage />} />
+              {/* Deep service pages */}
+              <Route path="/services/postgres" element={<PostgresPage />} />
+              <Route path="/services/redis" element={<RedisPage />} />
+              <Route path="/services/mongodb" element={<MongoDBPage />} />
+              <Route path="/services/qdrant" element={<QdrantPage />} />
+              <Route path="/services/minio" element={<MinIOPage />} />
+            </Routes>
+          </AppLayout>
+        </BrowserRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   )
 }

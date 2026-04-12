@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.core.docker import DockerClient
+from infra_docker import DockerClient
 
 
 class ServiceStatus(BaseModel):
@@ -20,17 +20,8 @@ class ServiceStatus(BaseModel):
     container_id: str | None = None
     container_name: str | None = None
     status: str = "unknown"
-    uptime: str | None = None
     ports: list[str] = []
     admin_url: str | None = None
-
-
-class ServiceHealth(BaseModel):
-    """Service health check result."""
-
-    healthy: bool
-    message: str
-    details: dict[str, Any] = {}
 
 
 class BaseService(ABC):
@@ -38,10 +29,10 @@ class BaseService(ABC):
     Abstract base class for all managed services.
 
     To add a new service:
-    1. Create a new file in app/services/
+    1. Create a new file in services/
     2. Inherit from BaseService
-    3. Implement all abstract methods
-    4. Register in app/main.py lifespan handler
+    3. Implement get_info
+    4. Register in main.py lifespan handler
     """
 
     # Service identification
@@ -71,9 +62,12 @@ class BaseService(ABC):
         status = container.status
         running = status == "running"
 
-        # Check health if available
-        health = container.attrs.get("State", {}).get("Health", {})
-        healthy = health.get("Status") == "healthy" if health else running
+        # Health is derived purely from Docker health check if present, else running status
+        health_info = container.attrs.get("State", {}).get("Health", {})
+        if health_info:
+            healthy = health_info.get("Status") == "healthy"
+        else:
+            healthy = running
 
         # Get ports
         ports = []
@@ -85,13 +79,6 @@ class BaseService(ABC):
                     if host_port:
                         ports.append(f"{host_port}:{container_port}")
 
-        # Calculate uptime
-        uptime = None
-        if running:
-            started_at = container.attrs.get("State", {}).get("StartedAt")
-            if started_at:
-                uptime = started_at
-
         return ServiceStatus(
             name=self.name,
             display_name=self.display_name,
@@ -100,18 +87,9 @@ class BaseService(ABC):
             container_id=container.short_id,
             container_name=self.container_name,
             status=status,
-            uptime=uptime,
             ports=ports,
             admin_url=self.admin_url,
         )
-
-    @abstractmethod
-    async def check_health(self) -> ServiceHealth:
-        """
-        Perform a service-level health check.
-        This should connect to the service and verify it's responding.
-        """
-        pass
 
     @abstractmethod
     async def get_info(self) -> dict[str, Any]:
