@@ -17,6 +17,7 @@ from services.auth import auth_service
 async def lifespan(app: FastAPI):
     DockerClient.initialize()
     await user_service.ensure_user_table()
+    await user_service.ensure_default_admin_user()
     yield
     DockerClient.close()
 

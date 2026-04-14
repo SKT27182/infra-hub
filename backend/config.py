@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     api_port: int = 8888
     debug: bool = False
     service_public_host: str = "127.0.0.1"
+    admin_email: str = "admin@infra.local"
+    admin_password: str = "admin12345"
 
     # CORS
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5143"]

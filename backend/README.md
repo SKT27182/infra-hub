@@ -11,6 +11,8 @@ Key variables:
 - `API_PORT`: backend bind port
 - `CORS_ORIGINS`: allowed origins (comma-separated or JSON array)
 - `SERVICE_PUBLIC_HOST`: host used to build admin URLs returned to frontend
+- `ADMIN_EMAIL`: default admin login email (seeded at startup)
+- `ADMIN_PASSWORD`: default admin login password (seeded at startup)
 
 All service metadata (service names, display names, container names, admin URLs) is read from `config.py` and sourced from env.
 
@@ -53,5 +55,6 @@ make dev-backend
 ## Notes
 
 - Backend docs/login auth depends on PostgreSQL user lookup.
+- On startup, backend ensures the default admin user from `ADMIN_EMAIL`/`ADMIN_PASSWORD` exists in PostgreSQL `users` table (in `POSTGRES_DB`, default `main_db`).
 - If user DB is unreachable, auth/docs return `503` (not `401`) to avoid browser auth retry loops.
 - In production, use Nginx reverse proxy for `/api` to backend.

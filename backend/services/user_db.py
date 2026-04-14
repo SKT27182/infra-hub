@@ -44,6 +44,29 @@ class UserService:
         except Exception as e:
             print(f"Error creating user table: {e}")
 
+    async def ensure_default_admin_user(self) -> None:
+        """Create or update the default admin user from env settings."""
+        try:
+            conn = await asyncpg.connect(settings.postgres_url)
+            hashed_password = auth_service.get_password_hash(settings.admin_password)
+            await conn.execute(
+                """
+                INSERT INTO users (email, hashed_password, full_name, is_active)
+                VALUES ($1, $2, $3, TRUE)
+                ON CONFLICT (email)
+                DO UPDATE SET
+                    hashed_password = EXCLUDED.hashed_password,
+                    full_name = EXCLUDED.full_name,
+                    is_active = TRUE
+                """,
+                settings.admin_email,
+                hashed_password,
+                "Administrator",
+            )
+            await conn.close()
+        except Exception as e:
+            print(f"Error ensuring default admin user: {e}")
+
     async def create_user(
         self, email: str, password: str, full_name: str | None = None
     ) -> dict[str, Any] | None:
