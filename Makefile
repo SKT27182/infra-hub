@@ -1,4 +1,4 @@
-.PHONY: help up down restart logs ps health clean
+.PHONY: help setup setup-backend setup-frontend build build-up up down stop restart logs ps health clean dev dev-backend dev-frontend
 
 # Default target
 help:
@@ -6,6 +6,9 @@ help:
 	@echo ""
 	@echo "Usage:"
 	@echo "  make up        - Start all services"
+	@echo "  make setup     - Install backend/frontend dependencies"
+	@echo "  make build     - Install dependencies and build frontend"
+	@echo "  make build-up  - Run build, then start Docker services"
 	@echo "  make down      - Stop docker services"
 	@echo "  make stop      - Stop all (Docker + Apps)"
 	@echo "  make restart   - Restart all services"
@@ -31,6 +34,19 @@ help:
 # =============================================================================
 # Main Commands
 # =============================================================================
+setup: setup-backend setup-frontend
+
+setup-backend:
+	cd backend && uv sync
+
+setup-frontend:
+	cd frontend && pnpm install
+
+build: setup
+	cd frontend && pnpm build
+
+build-up: build up
+
 up:
 	docker compose up -d
 
@@ -98,13 +114,13 @@ up-minio:
 # =============================================================================
 # Development
 # =============================================================================
-dev-backend:
+dev-backend: setup-backend
 	cd backend && set -a && . ./.env && set +a && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$$API_PORT"
 
-dev-frontend:
+dev-frontend: setup-frontend
 	cd frontend && pnpm dev
 
-dev:
+dev: setup
 	@echo "Starting all services..."
 	@make up
 	@echo "Waiting for Docker services to start..."
