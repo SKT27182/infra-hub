@@ -14,11 +14,11 @@ from .base import BaseService
 class PostgresService(BaseService):
     """PostgreSQL database service."""
 
-    name = "postgres"
-    display_name = "PostgreSQL"
-    container_name = "infra-postgres"
-    admin_url = "http://localhost:5050"
-    admin_container = "infra-pgadmin"
+    name = settings.postgres_service_name
+    display_name = settings.postgres_display_name
+    container_name = settings.postgres_container_name
+    admin_url = settings.postgres_admin_url
+    admin_container = settings.pgadmin_container_name
     _readonly_query_pattern = re.compile(
         r"^\s*(select|with|show|explain)\b",
         re.IGNORECASE,
@@ -41,8 +41,8 @@ class PostgresService(BaseService):
             return {
                 "status": self.get_status().model_dump(),
                 "connection": {
-                    "url": f"postgresql://{settings.postgres_user}:{settings.postgres_password}@127.0.0.1:{settings.postgres_port}",
-                    "host": "127.0.0.1",
+                    "url": f"postgresql://{settings.postgres_user}:{settings.postgres_password}@{settings.service_public_host}:{settings.postgres_port}",
+                    "host": settings.service_public_host,
                     "port": settings.postgres_port,
                     "user": settings.postgres_user,
                     "password": settings.postgres_password,

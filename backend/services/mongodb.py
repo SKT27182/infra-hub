@@ -15,11 +15,11 @@ from .base import BaseService
 class MongoDBService(BaseService):
     """MongoDB document database service."""
 
-    name = "mongodb"
-    display_name = "MongoDB"
-    container_name = "infra-mongodb"
-    admin_url = "http://localhost:8081"
-    admin_container = "infra-mongo-express"
+    name = settings.mongodb_service_name
+    display_name = settings.mongodb_display_name
+    container_name = settings.mongodb_container_name
+    admin_url = settings.mongodb_admin_url
+    admin_container = settings.mongo_express_container_name
 
     def _get_client(self) -> AsyncIOMotorClient:
         return AsyncIOMotorClient(settings.mongo_url)
@@ -48,7 +48,9 @@ class MongoDBService(BaseService):
 
             return {
                 "status": self.get_status().model_dump(),
-                "connection": {"url": f"mongodb://127.0.0.1:{settings.mongo_port}"},
+                "connection": {
+                    "url": f"mongodb://{settings.service_public_host}:{settings.mongo_port}"
+                },
                 "databases": db_details,
                 "total_collections": total_collections,
                 "version": server_info.get("version", "unknown"),
@@ -66,7 +68,9 @@ class MongoDBService(BaseService):
         except Exception:
             return False
 
-    async def query(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def query(
+        self, action: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Execute read-oriented MongoDB queries."""
         payload = params or {}
         client = self._get_client()

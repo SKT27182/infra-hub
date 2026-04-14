@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { API_BASE } from '@/lib/api';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -19,7 +20,7 @@ export function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('http://localhost:8888/api/auth/login', {
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -33,8 +34,8 @@ export function LoginPage() {
       const data = await response.json();
       login(data.access_token, data.user);
       navigate('/');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setIsLoading(false);
     }
@@ -83,4 +84,3 @@ export function LoginPage() {
     </div>
   );
 }
-

@@ -1,4 +1,4 @@
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8888') + '/api'
+export const API_BASE = '/api'
 
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('auth_token')

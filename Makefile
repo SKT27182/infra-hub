@@ -99,7 +99,7 @@ up-minio:
 # Development
 # =============================================================================
 dev-backend:
-	cd backend && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8888
+	cd backend && set -a && . ./.env && set +a && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$$API_PORT"
 
 dev-frontend:
 	cd frontend && pnpm dev
@@ -111,6 +111,6 @@ dev:
 	@sleep 5
 	@echo "Starting backend and frontend..."
 	@trap 'kill 0' SIGINT; \
-		(cd backend && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8888) & \
+		(cd backend && set -a && . ./.env && set +a && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$$API_PORT") & \
 		(cd frontend && pnpm dev) & \
 		wait

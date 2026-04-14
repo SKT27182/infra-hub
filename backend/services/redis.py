@@ -13,11 +13,11 @@ from .base import BaseService
 class RedisService(BaseService):
     """Redis cache service."""
 
-    name = "redis"
-    display_name = "Redis"
-    container_name = "infra-redis"
-    admin_url = "http://localhost:5540"
-    admin_container = "infra-redisinsight"
+    name = settings.redis_service_name
+    display_name = settings.redis_display_name
+    container_name = settings.redis_container_name
+    admin_url = settings.redis_admin_url
+    admin_container = settings.redisinsight_container_name
 
     def _get_client(self) -> redis.Redis:
         return redis.Redis(
@@ -40,8 +40,8 @@ class RedisService(BaseService):
             return {
                 "status": self.get_status().model_dump(),
                 "connection": {
-                    "url": f"redis://127.0.0.1:{settings.redis_port}",
-                    "host": "127.0.0.1",
+                    "url": f"redis://{settings.service_public_host}:{settings.redis_port}",
+                    "host": settings.service_public_host,
                     "port": settings.redis_port,
                 },
                 "memory": {
@@ -57,7 +57,9 @@ class RedisService(BaseService):
         except Exception as e:
             return {"error": str(e), "status": self.get_status().model_dump()}
 
-    async def query(self, command: str, args: list[Any] | None = None) -> dict[str, Any]:
+    async def query(
+        self, command: str, args: list[Any] | None = None
+    ) -> dict[str, Any]:
         """Execute an arbitrary Redis command."""
         try:
             client = self._get_client()

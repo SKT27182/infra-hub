@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr
 
 from services.auth import auth_service
-from services.user_db import user_service
+from services.user_db import UserStoreUnavailableError, user_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -47,7 +47,14 @@ async def signup(user_data: UserCreate) -> dict[str, Any]:
 @router.post("/login", response_model=TokenResponse)
 async def login(login_data: UserLogin) -> dict[str, Any]:
     """Login a user."""
-    user = await user_service.get_user_by_email(login_data.email)
+    try:
+        user = await user_service.get_user_by_email(login_data.email)
+    except UserStoreUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is unavailable because the user database is unreachable.",
+        ) from exc
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

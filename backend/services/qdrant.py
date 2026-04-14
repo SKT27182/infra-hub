@@ -13,10 +13,10 @@ from .base import BaseService
 class QdrantService(BaseService):
     """Qdrant vector database service."""
 
-    name = "qdrant"
-    display_name = "Qdrant"
-    container_name = "infra-qdrant"
-    admin_url = "http://localhost:6333/dashboard"
+    name = settings.qdrant_service_name
+    display_name = settings.qdrant_display_name
+    container_name = settings.qdrant_container_name
+    admin_url = settings.qdrant_admin_url
 
     def _get_client(self) -> QdrantClient:
         return QdrantClient(
@@ -51,8 +51,8 @@ class QdrantService(BaseService):
             return {
                 "status": self.get_status().model_dump(),
                 "connection": {
-                    "url": f"http://127.0.0.1:{settings.qdrant_port}",
-                    "host": "127.0.0.1",
+                    "url": f"http://{settings.service_public_host}:{settings.qdrant_port}",
+                    "host": settings.service_public_host,
                     "port": settings.qdrant_port,
                 },
                 "collections": details,
@@ -71,7 +71,9 @@ class QdrantService(BaseService):
         except Exception:
             return False
 
-    async def query(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def query(
+        self, action: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Execute Qdrant query actions."""
         payload = params or {}
         client = self._get_client()
@@ -113,7 +115,9 @@ class QdrantService(BaseService):
                 return {
                     "success": True,
                     "count": len(points),
-                    "next_page_offset": str(next_page_offset) if next_page_offset else None,
+                    "next_page_offset": (
+                        str(next_page_offset) if next_page_offset else None
+                    ),
                     "result": [
                         {
                             "id": str(point.id),
@@ -127,7 +131,10 @@ class QdrantService(BaseService):
             if action == "search":
                 vector = payload.get("vector")
                 if not isinstance(vector, list) or not vector:
-                    return {"success": False, "error": "vector must be a non-empty array"}
+                    return {
+                        "success": False,
+                        "error": "vector must be a non-empty array",
+                    }
                 limit = int(payload.get("limit", 5))
                 with_payload = bool(payload.get("with_payload", True))
                 results = client.search(

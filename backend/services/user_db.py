@@ -2,12 +2,19 @@
 User database service handling user storage in PostgreSQL.
 """
 
+import logging
 from typing import Any
 
 import asyncpg
 
 from config import settings
 from .auth import auth_service
+
+logger = logging.getLogger(__name__)
+
+
+class UserStoreUnavailableError(RuntimeError):
+    """Raised when the user store cannot be reached."""
 
 
 class UserService:
@@ -37,7 +44,9 @@ class UserService:
         except Exception as e:
             print(f"Error creating user table: {e}")
 
-    async def create_user(self, email: str, password: str, full_name: str | None = None) -> dict[str, Any] | None:
+    async def create_user(
+        self, email: str, password: str, full_name: str | None = None
+    ) -> dict[str, Any] | None:
         """Create a new user."""
         hashed_password = auth_service.get_password_hash(password)
         try:
@@ -62,14 +71,12 @@ class UserService:
         """Fetch a user by email."""
         try:
             conn = await asyncpg.connect(settings.postgres_url)
-            user = await conn.fetchrow(
-                "SELECT * FROM users WHERE email = $1", email
-            )
+            user = await conn.fetchrow("SELECT * FROM users WHERE email = $1", email)
             await conn.close()
             return dict(user) if user else None
-        except Exception as e:
-            print(f"Error fetching user: {e}")
-            return None
+        except (asyncpg.PostgresError, OSError) as exc:
+            logger.exception("Error fetching user by email")
+            raise UserStoreUnavailableError("User database is unavailable") from exc
 
 
 user_service = UserService()

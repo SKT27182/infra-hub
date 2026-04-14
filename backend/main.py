@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +9,7 @@ from fastapi.openapi.utils import get_openapi
 from config import settings
 from infra_docker import DockerClient
 from routers import health, services, auth
-from services.user_db import user_service
+from services.user_db import UserStoreUnavailableError, user_service
 from services.auth import auth_service
 
 
@@ -35,7 +34,14 @@ security = HTTPBasic()
 
 async def get_docs_auth(credentials: HTTPBasicCredentials = Depends(security)):
     """Check basic auth for documentation."""
-    user = await user_service.get_user_by_email(credentials.username)
+    try:
+        user = await user_service.get_user_by_email(credentials.username)
+    except UserStoreUnavailableError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Documentation authentication is unavailable because the user database is unreachable.",
+        ) from exc
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -77,3 +83,14 @@ app.include_router(auth.router, prefix="/api", tags=["Auth"])
 @app.get("/")
 async def root():
     return {"message": "Infra Hub API", "docs": "/docs"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host=settings.api_host,
+        port=settings.api_port,
+        reload=settings.debug,
+    )

@@ -14,10 +14,10 @@ from .base import BaseService
 class MinIOService(BaseService):
     """MinIO object storage service."""
 
-    name = "minio"
-    display_name = "MinIO"
-    container_name = "infra-minio"
-    admin_url = "http://localhost:9001"
+    name = settings.minio_service_name
+    display_name = settings.minio_display_name
+    container_name = settings.minio_container_name
+    admin_url = settings.minio_admin_url
 
     def _get_client(self) -> Minio:
         return Minio(
@@ -49,7 +49,7 @@ class MinIOService(BaseService):
             return {
                 "status": self.get_status().model_dump(),
                 "connection": {
-                    "url": f"http://127.0.0.1:{settings.minio_port}",
+                    "url": f"http://{settings.service_public_host}:{settings.minio_port}",
                     "access_key": settings.minio_user,
                     "secret_key": settings.minio_password,
                 },
@@ -76,7 +76,9 @@ class MinIOService(BaseService):
         except Exception:
             return False
 
-    async def query(self, action: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def query(
+        self, action: str, params: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Execute MinIO query actions."""
         payload = params or {}
 
@@ -106,7 +108,9 @@ class MinIOService(BaseService):
                 prefix = str(payload.get("prefix") or "")
                 recursive = bool(payload.get("recursive", True))
                 limit = int(payload.get("limit", 100))
-                objects = client.list_objects(bucket, prefix=prefix, recursive=recursive)
+                objects = client.list_objects(
+                    bucket, prefix=prefix, recursive=recursive
+                )
                 result = []
                 for i, obj in enumerate(objects):
                     if i >= limit:
@@ -138,7 +142,9 @@ class MinIOService(BaseService):
                         "etag": stat.etag,
                         "content_type": stat.content_type,
                         "last_modified": (
-                            stat.last_modified.isoformat() if stat.last_modified else None
+                            stat.last_modified.isoformat()
+                            if stat.last_modified
+                            else None
                         ),
                     },
                 }
