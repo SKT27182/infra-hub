@@ -60,11 +60,21 @@ async def get_docs_auth(credentials: HTTPBasicCredentials = Depends(security)):
 
 @app.get("/docs", include_in_schema=False)
 async def get_documentation(username: str = Depends(get_docs_auth)):
-    return get_swagger_ui_html(openapi_url="/openapi.json", title="Infra Hub API Docs")
+    return get_swagger_ui_html(openapi_url="/api/openapi.json", title="Infra Hub API Docs")
+
+
+@app.get("/api/docs", include_in_schema=False)
+async def get_api_documentation(username: str = Depends(get_docs_auth)):
+    return get_swagger_ui_html(openapi_url="/api/openapi.json", title="Infra Hub API Docs")
 
 
 @app.get("/openapi.json", include_in_schema=False)
 async def openapi_endpoint(username: str = Depends(get_docs_auth)):
+    return get_openapi(title=app.title, version="0.1.0", routes=app.routes)
+
+
+@app.get("/api/openapi.json", include_in_schema=False)
+async def api_openapi_endpoint(username: str = Depends(get_docs_auth)):
     return get_openapi(title=app.title, version="0.1.0", routes=app.routes)
 
 

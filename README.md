@@ -63,7 +63,7 @@ Default local values are controlled by env:
 
 - Frontend: `http://localhost:${VITE_PORT}`
 - Backend API: `http://127.0.0.1:${API_PORT}`
-- API docs: `http://127.0.0.1:${API_PORT}/docs`
+- API docs: `http://127.0.0.1:${API_PORT}/api/docs`
 
 Admin UI links in the dashboard are built from:
 

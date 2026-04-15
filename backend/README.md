@@ -33,8 +33,8 @@ make dev-backend
 ## API entrypoints
 
 - Root: `http://127.0.0.1:${API_PORT}/`
-- Swagger UI: `http://127.0.0.1:${API_PORT}/docs`
-- OpenAPI JSON: `http://127.0.0.1:${API_PORT}/openapi.json`
+- Swagger UI: `http://127.0.0.1:${API_PORT}/api/docs`
+- OpenAPI JSON: `http://127.0.0.1:${API_PORT}/api/openapi.json`
 - Application APIs: `http://127.0.0.1:${API_PORT}/api/*`
 
 ## Service ports and access (env-driven)
