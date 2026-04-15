@@ -1,68 +1,60 @@
-.PHONY: help setup setup-backend setup-frontend build build-up up down stop restart logs ps health clean dev dev-backend dev-frontend
+SHELL := /bin/bash
 
-# Default target
+.PHONY: help install dev-local dev up down clean clean-all prepare-logs stop-local logs ps health \
+	up-postgres up-redis up-mongodb up-qdrant up-minio build
+
+LOG_DIR := $(HOME)/.local/share/dev-logs/infra-hub
+BACKEND_LOG := $(LOG_DIR)/backend.log
+FRONTEND_LOG := $(LOG_DIR)/frontend.log
+BACKEND_PID := $(LOG_DIR)/backend.pid
+FRONTEND_PID := $(LOG_DIR)/frontend.pid
+
 help:
-	@echo "Infra Hub - Centralized Infrastructure Management"
+	@echo "Infra Hub - Available commands"
 	@echo ""
-	@echo "Usage:"
-	@echo "  make up        - Start all services"
-	@echo "  make setup     - Install backend/frontend dependencies"
-	@echo "  make build     - Install dependencies and build frontend"
-	@echo "  make build-up  - Run build, then start Docker services"
-	@echo "  make down      - Stop docker services"
-	@echo "  make stop      - Stop all (Docker + Apps)"
-	@echo "  make restart   - Restart all services"
-	@echo "  make logs      - View logs (follow mode)"
-	@echo "  make ps        - Show service status"
-	@echo "  make health    - Check service health"
-	@echo "  make clean     - Remove all containers and volumes (DESTRUCTIVE)"
+	@echo "  make install     - Install backend (uv sync) and frontend (pnpm install)"
+	@echo "  make dev-local   - Start infra services in Docker + run backend/frontend locally"
+	@echo "  make dev         - Run infra services in Docker"
+	@echo "  make down        - Stop Docker services and local backend/frontend processes"
+	@echo "  make clean       - Remove local caches and pid files"
+	@echo "  make clean-all   - Clean everything (logs + Docker volumes)"
 	@echo ""
-	@echo "Service-specific:"
-	@echo "  make up-postgres    - Start PostgreSQL only"
-	@echo "  make up-redis       - Start Redis only"
-	@echo "  make up-mongodb     - Start MongoDB only"
-	@echo "  make up-qdrant      - Start Qdrant only"
-	@echo "  make up-minio       - Start MinIO only"
-	@echo ""
-	@echo "Admin UIs:"
-	@echo "  pgAdmin:       http://localhost:5050"
-	@echo "  RedisInsight:  http://localhost:5540"
-	@echo "  Mongo Express: http://localhost:8081"
-	@echo "  Qdrant:        http://localhost:6333/dashboard"
-	@echo "  MinIO Console: http://localhost:9001"
+	@echo "Useful extras:"
+	@echo "  make logs        - docker compose logs -f"
+	@echo "  make ps          - docker compose ps"
+	@echo "  make health      - quick health checks"
 
-# =============================================================================
-# Main Commands
-# =============================================================================
-setup: setup-backend setup-frontend
-
-setup-backend:
+install:
 	cd backend && uv sync
-
-setup-frontend:
 	cd frontend && pnpm install
 
-build: setup
-	cd frontend && pnpm build
-
-build-up: build up
+prepare-logs:
+	@mkdir -p "$(LOG_DIR)"
+	@: > "$(BACKEND_LOG)"
+	@: > "$(FRONTEND_LOG)"
 
 up:
 	docker compose up -d
 
-down:
+dev: up
+
+dev-local: install prepare-logs up
+	@echo "backend log:  $(BACKEND_LOG)"
+	@echo "frontend log: $(FRONTEND_LOG)"
+	@bash -c 'set -euo pipefail; \
+		trap '"'"'kill $$backend_pid $$frontend_pid 2>/dev/null || true; rm -f "$(BACKEND_PID)" "$(FRONTEND_PID)"'"'"' INT TERM EXIT; \
+		( cd backend && set -a && [ -f .env ] && source .env; set +a; \
+		  .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$${API_PORT:-8888}" \
+		) >> "$(BACKEND_LOG)" 2>&1 & backend_pid=$$!; echo $$backend_pid > "$(BACKEND_PID)"; \
+		( cd frontend && pnpm dev ) >> "$(FRONTEND_LOG)" 2>&1 & frontend_pid=$$!; echo $$frontend_pid > "$(FRONTEND_PID)"; \
+		wait $$backend_pid $$frontend_pid'
+
+stop-local:
+	@if [ -f "$(BACKEND_PID)" ]; then kill "$$(cat "$(BACKEND_PID)")" 2>/dev/null || true; rm -f "$(BACKEND_PID)"; fi
+	@if [ -f "$(FRONTEND_PID)" ]; then kill "$$(cat "$(FRONTEND_PID)")" 2>/dev/null || true; rm -f "$(FRONTEND_PID)"; fi
+
+down: stop-local
 	docker compose down
-
-stop:
-	@echo "Stopping Docker services..."
-	@docker compose down
-	@echo "Stopping backend and frontend processes..."
-	@-pkill -f "uvicorn main:app" || true
-	@-pkill -f "vite" || true
-	@echo "All services stopped."
-
-restart:
-	docker compose restart
 
 logs:
 	docker compose logs -f
@@ -86,16 +78,20 @@ health:
 	@curl -s http://localhost:6333/health | grep -q "ok" && echo "  ✓ Healthy" || echo "  ✗ Not ready"
 	@echo ""
 	@echo "MinIO:"
-	@curl -s http://localhost:9000/minio/health/live && echo "  ✓ Healthy" || echo "  ✗ Not ready"
+	@curl -s http://localhost:9000/minio/health/live >/dev/null && echo "  ✓ Healthy" || echo "  ✗ Not ready"
 
-clean:
-	@echo "WARNING: This will remove all containers and volumes!"
-	@read -p "Are you sure? (y/N) " confirm && [ "$$confirm" = "y" ] && \
-		docker compose down -v --remove-orphans || echo "Cancelled"
+build: install
+	cd frontend && pnpm build
 
-# =============================================================================
-# Service-Specific Commands
-# =============================================================================
+clean: stop-local
+	rm -rf frontend/dist
+	find backend -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	find backend -type f -name "*.pyc" -delete 2>/dev/null || true
+
+clean-all: clean
+	rm -f "$(BACKEND_LOG)" "$(FRONTEND_LOG)"
+	docker compose down -v --remove-orphans
+
 up-postgres:
 	docker compose up -d postgres pgadmin
 
@@ -110,23 +106,3 @@ up-qdrant:
 
 up-minio:
 	docker compose up -d minio
-
-# =============================================================================
-# Development
-# =============================================================================
-dev-backend: setup-backend
-	cd backend && set -a && . ./.env && set +a && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$$API_PORT"
-
-dev-frontend: setup-frontend
-	cd frontend && pnpm dev
-
-dev: setup
-	@echo "Starting all services..."
-	@make up
-	@echo "Waiting for Docker services to start..."
-	@sleep 5
-	@echo "Starting backend and frontend..."
-	@trap 'kill 0' SIGINT; \
-		(cd backend && set -a && . ./.env && set +a && .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$$API_PORT") & \
-		(cd frontend && pnpm dev) & \
-		wait

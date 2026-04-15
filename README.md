@@ -36,31 +36,22 @@ Templates:
 ### 1. Install dependencies
 
 ```bash
-cd backend
-uv venv .venv
-uv sync
-
-cd ../frontend
-pnpm install
+make install
 ```
 
-### 2. Start infrastructure containers
+### 2. Start full local development (infra in Docker + apps locally)
 
 ```bash
-make up
+make dev-local
 ```
 
-### 3. Run backend and frontend
+Logs are written to `~/.local/share/dev-logs/infra-hub/`:
 
 ```bash
-# terminal 1
-make dev-backend
-
-# terminal 2
-make dev-frontend
+tail -f ~/.local/share/dev-logs/infra-hub/backend.log ~/.local/share/dev-logs/infra-hub/frontend.log
 ```
 
-Or run all together:
+### 3. Run infra services in Docker only
 
 ```bash
 make dev
@@ -81,8 +72,8 @@ Admin UI links in the dashboard are built from:
 
 ## Important behavior
 
-1. `make dev-backend` starts only backend, not Docker containers.
-2. Start containers first with `make up` (or service-specific `make up-*`) before using login/docs/service APIs.
+1. `make dev` runs infra services in Docker only.
+2. `make dev-local` starts Docker infra services, then runs backend/frontend locally.
 3. Docs/login auth needs PostgreSQL reachable.
 4. Backend returns `503` when user DB is unavailable (instead of misleading `401` loops).
 
@@ -90,16 +81,14 @@ Admin UI links in the dashboard are built from:
 
 ```bash
 make up             # start all Docker services
-make down           # stop Docker services
-make stop           # stop Docker + local backend/frontend processes
-make restart        # restart Docker services
+make down           # stop Docker services + local backend/frontend pids
+make dev            # run infra services in Docker
+make dev-local      # run infra (Docker) + backend/frontend locally
 make logs           # docker compose logs -f
 make ps             # docker compose ps
 make health         # quick health checks
-make clean          # remove containers and volumes
-make dev-backend    # run backend with backend/.env API_PORT
-make dev-frontend   # run frontend with frontend/.env VITE_PORT
-make dev            # start Docker + backend + frontend
+make clean          # remove local caches and pid files
+make clean-all      # remove logs + Docker volumes
 ```
 
 ## Reverse proxy note (Nginx)
