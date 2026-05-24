@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: help install dev-local dev up down clean clean-all prepare-logs stop-local logs ps health \
+.PHONY: help install dev-local dev up down clean clean-all clean-hard print-urls prepare-logs stop-local logs ps health \
 	up-postgres up-redis up-mongodb up-qdrant up-minio build
 
 LOG_DIR := $(HOME)/.local/share/dev-logs/infra-hub
@@ -8,6 +8,14 @@ BACKEND_LOG := $(LOG_DIR)/backend.log
 FRONTEND_LOG := $(LOG_DIR)/frontend.log
 BACKEND_PID := $(LOG_DIR)/backend.pid
 FRONTEND_PID := $(LOG_DIR)/frontend.pid
+BACKEND_ENV_FILE := $(if $(wildcard backend/.env),backend/.env,backend/.env.example)
+FRONTEND_ENV_FILE := $(if $(wildcard frontend/.env),frontend/.env,frontend/.env.example)
+APP_HOST_RAW := $(shell awk -F= '/^SERVICE_PUBLIC_HOST=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(BACKEND_ENV_FILE) 2>/dev/null)
+APP_HOST := $(if $(APP_HOST_RAW),$(APP_HOST_RAW),127.0.0.1)
+BACKEND_PORT_RAW := $(shell awk -F= '/^API_PORT=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(BACKEND_ENV_FILE) 2>/dev/null)
+BACKEND_PORT := $(if $(BACKEND_PORT_RAW),$(BACKEND_PORT_RAW),8888)
+FRONTEND_PORT_RAW := $(shell awk -F= '/^VITE_PORT=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(FRONTEND_ENV_FILE) 2>/dev/null)
+FRONTEND_PORT := $(if $(FRONTEND_PORT_RAW),$(FRONTEND_PORT_RAW),5143)
 
 help:
 	@echo "Infra Hub - Available commands"
@@ -18,6 +26,8 @@ help:
 	@echo "  make down        - Stop Docker services and local backend/frontend processes"
 	@echo "  make clean       - Remove local caches and pid files"
 	@echo "  make clean-all   - Clean everything (logs + Docker volumes)"
+	@echo "  make clean-hard  - Force clean (containers, volumes, images, logs)"
+	@echo "  make print-urls  - Show backend/frontend URLs from env ports"
 	@echo ""
 	@echo "Useful extras:"
 	@echo "  make logs        - docker compose logs -f"
@@ -35,16 +45,18 @@ prepare-logs:
 
 up:
 	docker compose up -d
+	@$(MAKE) --no-print-directory print-urls
 
 dev: up
 
 dev-local: install prepare-logs up
 	@echo "backend log:  $(BACKEND_LOG)"
 	@echo "frontend log: $(FRONTEND_LOG)"
+	@$(MAKE) --no-print-directory print-urls
 	@bash -c 'set -euo pipefail; \
 		trap '"'"'kill $$backend_pid $$frontend_pid 2>/dev/null || true; rm -f "$(BACKEND_PID)" "$(FRONTEND_PID)"'"'"' INT TERM EXIT; \
 		( cd backend && set -a && [ -f .env ] && source .env; set +a; \
-		  .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$${API_PORT:-8888}" \
+		  .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$${API_PORT:-$(BACKEND_PORT)}" \
 		) >> "$(BACKEND_LOG)" 2>&1 & backend_pid=$$!; echo $$backend_pid > "$(BACKEND_PID)"; \
 		( cd frontend && pnpm dev ) >> "$(FRONTEND_LOG)" 2>&1 & frontend_pid=$$!; echo $$frontend_pid > "$(FRONTEND_PID)"; \
 		wait $$backend_pid $$frontend_pid'
@@ -91,6 +103,14 @@ clean: stop-local
 clean-all: clean
 	rm -f "$(BACKEND_LOG)" "$(FRONTEND_LOG)"
 	docker compose down -v --remove-orphans
+
+clean-hard: stop-local
+	rm -f "$(BACKEND_LOG)" "$(FRONTEND_LOG)"
+	docker compose down --volumes --remove-orphans --rmi local
+
+print-urls:
+	@echo "Backend URL:  http://$(APP_HOST):$(BACKEND_PORT)"
+	@echo "Frontend URL: http://$(APP_HOST):$(FRONTEND_PORT)"
 
 up-postgres:
 	docker compose up -d postgres pgadmin
