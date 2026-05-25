@@ -5,8 +5,9 @@ Application configuration using pydantic-settings.
 import json
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import urlparse
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -23,12 +24,28 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8888
     debug: bool = False
+    app_public_url: str | None = None
+    app_public_host: str | None = None
     service_public_host: str = "127.0.0.1"
     admin_email: str = "admin@infra.local"
     admin_password: str = "admin12345"
 
-    # CORS
-    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5143"]
+    # CORS (local dev origins; APP_PUBLIC_URL is merged in automatically)
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5143", "http://127.0.0.1:5143"]
+
+    @model_validator(mode="after")
+    def apply_public_app_settings(self) -> "Settings":
+        if self.app_public_host:
+            self.service_public_host = self.app_public_host
+        elif self.app_public_url:
+            hostname = urlparse(self.app_public_url).hostname
+            if hostname:
+                self.service_public_host = hostname
+        if self.app_public_url:
+            public_origin = self.app_public_url.rstrip("/")
+            if public_origin not in self.cors_origins:
+                self.cors_origins.append(public_origin)
+        return self
 
     @field_validator("cors_origins", mode="before")
     @classmethod
