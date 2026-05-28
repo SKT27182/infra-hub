@@ -1,8 +1,9 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AppLayout, ProtectedRoute } from '@/components/layout'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import {
   DashboardPage,
   ServiceDetailPage,
@@ -13,6 +14,8 @@ import {
   QdrantPage,
   MinIOPage,
   LoginPage,
+  UsersPage,
+  SettingsPage,
 } from '@/pages'
 
 const queryClient = new QueryClient({
@@ -26,6 +29,21 @@ const queryClient = new QueryClient({
 
 function AppRoutes() {
   const { isAuthenticated } = useAuth()
+  const location = useLocation()
+
+  const titles: Record<string, string> = {
+    '/': 'Dashboard — Infra Hub',
+    '/containers': 'Containers — Infra Hub',
+    '/users': 'Users — Infra Hub',
+    '/settings': 'Settings — Infra Hub',
+    '/login': 'Sign in — Infra Hub',
+  }
+  const pageTitle =
+    titles[location.pathname] ??
+    (location.pathname.startsWith('/services/')
+      ? 'Service — Infra Hub'
+      : 'Infra Hub')
+  useDocumentTitle(pageTitle)
 
   return (
     <Routes>
@@ -51,6 +69,28 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <ContainersPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/users"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <UsersPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <SettingsPage />
             </AppLayout>
           </ProtectedRoute>
         }

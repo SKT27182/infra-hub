@@ -6,7 +6,11 @@ from services.redis import RedisService
 from services.minio import MinIOService
 from services.mongodb import MongoDBService
 from services.qdrant import QdrantService
+from config import settings
 from services.auth import get_current_user
+from utils.logger import create_logger
+
+logger = create_logger(__name__, level=settings.log_level)
 
 router = APIRouter(prefix="/services", dependencies=[Depends(get_current_user)])
 
@@ -58,6 +62,7 @@ async def list_services():
 async def get_service(name: str):
     """Get a specific service status."""
     if name not in SERVICES:
+        logger.debug("Service not found: %s", name)
         raise HTTPException(status_code=404, detail="Service not found")
     return SERVICES[name].get_status().model_dump()
 
@@ -93,22 +98,31 @@ async def get_service_logs(name: str, tail: int = 100):
 @router.post("/{name}/start")
 async def start_service(name: str):
     if name not in SERVICES:
+        logger.debug("Service not found: %s", name)
         raise HTTPException(status_code=404, detail="Service not found")
-    return {"success": SERVICES[name].start()}
+    success = SERVICES[name].start()
+    logger.info("Service start %s: %s", name, success)
+    return {"success": success}
 
 
 @router.post("/{name}/stop")
 async def stop_service(name: str):
     if name not in SERVICES:
+        logger.debug("Service not found: %s", name)
         raise HTTPException(status_code=404, detail="Service not found")
-    return {"success": SERVICES[name].stop()}
+    success = SERVICES[name].stop()
+    logger.info("Service stop %s: %s", name, success)
+    return {"success": success}
 
 
 @router.post("/{name}/restart")
 async def restart_service(name: str):
     if name not in SERVICES:
+        logger.debug("Service not found: %s", name)
         raise HTTPException(status_code=404, detail="Service not found")
-    return {"success": SERVICES[name].restart()}
+    success = SERVICES[name].restart()
+    logger.info("Service restart %s: %s", name, success)
+    return {"success": success}
 
 
 # Service-specific actions
@@ -124,6 +138,7 @@ async def drop_pg_db(db_name: str):
 
 @router.post("/postgres/query")
 async def query_postgres(payload: PostgresQueryRequest):
+    logger.verbose("Postgres query on database=%s", payload.database)
     return await postgres.query(payload.query, payload.database)
 
 

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8888
     debug: bool = False
+    log_level: str = "INFO"
     app_public_url: str | None = None
     app_public_host: str | None = None
     service_public_host: str = "127.0.0.1"

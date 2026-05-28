@@ -1,6 +1,11 @@
 from fastapi import APIRouter, Depends
+
+from config import settings
 from infra_docker import DockerClient
 from services.auth import get_current_user
+from utils.logger import create_logger
+
+logger = create_logger(__name__, level=settings.log_level)
 
 router = APIRouter(dependencies=[Depends(get_current_user)])
 
@@ -26,8 +31,14 @@ async def check_all_health():
             }
         )
 
+    overall = "healthy" if all(c["healthy"] for c in results) else "unhealthy"
+    logger.verbose(
+        "Health check: %s (%d containers)",
+        overall,
+        len(results),
+    )
     return {
-        "status": "healthy" if all(c["healthy"] for c in results) else "unhealthy",
+        "status": overall,
         "containers": results,
     }
 

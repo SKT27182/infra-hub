@@ -7,7 +7,10 @@ from typing import Any
 import redis.asyncio as redis
 
 from config import settings
+from utils.logger import create_logger
 from .base import BaseService
+
+logger = create_logger(__name__, level=settings.log_level)
 
 
 class RedisService(BaseService):
@@ -55,6 +58,7 @@ class RedisService(BaseService):
                 "uptime_seconds": server_info.get("uptime_in_seconds", 0),
             }
         except Exception as e:
+            logger.warning("Redis get_info failed: %s", e)
             return {"error": str(e), "status": self.get_status().model_dump()}
 
     async def query(
@@ -68,4 +72,5 @@ class RedisService(BaseService):
 
             return {"success": True, "result": result}
         except Exception as e:
+            logger.error("Redis command failed: %s %s", command, e)
             return {"success": False, "error": str(e)}

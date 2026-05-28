@@ -5,6 +5,10 @@ import { ExternalLink, Database, Trash2, Copy, Check, Users, Server } from 'luci
 import { useEffect, useState } from 'react'
 import { useService, usePostgresDatabases, usePostgresActions, useServiceInfo } from '@/hooks'
 import { postgresQuery, type PostgresQueryResponse } from '@/lib/api'
+import {
+  DEFAULT_POSTGRES_QUERY,
+  POSTGRES_QUERY_HINT,
+} from '@/lib/service-default-queries'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -21,7 +25,7 @@ export function PostgresPage() {
   const { dropDB } = usePostgresActions()
   const [copied, setCopied] = useState(false)
   const [selectedDb, setSelectedDb] = useState('main_db')
-  const [query, setQuery] = useState('SELECT now() AS server_time;')
+  const [query, setQuery] = useState(DEFAULT_POSTGRES_QUERY)
   const [queryRunning, setQueryRunning] = useState(false)
   const [queryResult, setQueryResult] = useState<PostgresQueryResponse | null>(null)
 
@@ -216,6 +220,7 @@ export function PostgresPage() {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Write a read-only SQL query"
           />
+          <p className="text-xs text-muted-foreground">{POSTGRES_QUERY_HINT}</p>
 
           {queryResult && !queryResult.success && (
             <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">

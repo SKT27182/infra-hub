@@ -8,6 +8,11 @@ import docker
 from docker.errors import DockerException, NotFound
 from docker.models.containers import Container
 
+from config import settings
+from utils.logger import create_logger
+
+logger = create_logger(__name__, level=settings.log_level)
+
 
 class DockerClient:
     """Singleton Docker client wrapper."""
@@ -20,7 +25,9 @@ class DockerClient:
         try:
             cls._client = docker.from_env()
             cls._client.ping()
+            logger.info("Docker daemon connected")
         except DockerException as e:
+            logger.error("Failed to connect to Docker: %s", e)
             raise RuntimeError(f"Failed to connect to Docker: {e}") from e
 
     @classmethod
@@ -29,6 +36,7 @@ class DockerClient:
         if cls._client:
             cls._client.close()
             cls._client = None
+            logger.verbose("Docker client closed")
 
     @classmethod
     def get_client(cls) -> docker.DockerClient:
@@ -49,6 +57,7 @@ class DockerClient:
         try:
             return cls.get_client().containers.get(container_id)
         except NotFound:
+            logger.debug("Container not found: %s", container_id)
             return None
 
     @classmethod
@@ -60,6 +69,7 @@ class DockerClient:
         try:
             return container.stats(stream=False)
         except Exception:
+            logger.warning("Failed to get stats for container: %s", container_id)
             return {}
 
     @classmethod
@@ -67,11 +77,14 @@ class DockerClient:
         """Start a container."""
         container = cls.get_container(container_id)
         if container is None:
+            logger.warning("Cannot start missing container: %s", container_id)
             return False
         try:
             container.start()
+            logger.verbose("Started container: %s", container_id)
             return True
         except Exception:
+            logger.warning("Failed to start container: %s", container_id)
             return False
 
     @classmethod
@@ -79,11 +92,14 @@ class DockerClient:
         """Stop a container."""
         container = cls.get_container(container_id)
         if container is None:
+            logger.warning("Cannot stop missing container: %s", container_id)
             return False
         try:
             container.stop()
+            logger.verbose("Stopped container: %s", container_id)
             return True
         except Exception:
+            logger.warning("Failed to stop container: %s", container_id)
             return False
 
     @classmethod
@@ -91,11 +107,14 @@ class DockerClient:
         """Restart a container."""
         container = cls.get_container(container_id)
         if container is None:
+            logger.warning("Cannot restart missing container: %s", container_id)
             return False
         try:
             container.restart()
+            logger.verbose("Restarted container: %s", container_id)
             return True
         except Exception:
+            logger.warning("Failed to restart container: %s", container_id)
             return False
 
     @classmethod
@@ -110,4 +129,5 @@ class DockerClient:
             logs = container.logs(tail=tail, since=since, timestamps=True)
             return logs.decode("utf-8") if isinstance(logs, bytes) else str(logs)
         except Exception:
+            logger.warning("Failed to fetch logs for container: %s", container_id)
             return ""

@@ -232,3 +232,104 @@ export async function deleteQdrantCollection(name: string): Promise<{ success: b
   const res = await fetchWithAuth(`${API_BASE}/services/qdrant/collections/${name}`, { method: 'DELETE' })
   return res.json()
 }
+
+export interface InfraUser {
+  id: number
+  email: string
+  name: string
+  role: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export async function getMe(): Promise<InfraUser> {
+  const res = await fetchWithAuth(`${API_BASE}/auth/me`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to load profile')
+  }
+  return res.json()
+}
+
+export async function updateProfile(name: string): Promise<InfraUser> {
+  const res = await fetchWithAuth(`${API_BASE}/auth/me/profile`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to update profile')
+  }
+  return res.json()
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const res = await fetchWithAuth(`${API_BASE}/auth/me/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to change password')
+  }
+}
+
+export async function listUsers(): Promise<InfraUser[]> {
+  const res = await fetchWithAuth(`${API_BASE}/users`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to list users')
+  }
+  return res.json()
+}
+
+export async function createUser(data: {
+  email: string
+  password: string
+  name?: string
+  role?: string
+}): Promise<InfraUser> {
+  const res = await fetchWithAuth(`${API_BASE}/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to create user')
+  }
+  return res.json()
+}
+
+export async function updateUser(
+  id: number,
+  data: { name?: string; password?: string; role?: string; is_active?: boolean }
+): Promise<InfraUser> {
+  const res = await fetchWithAuth(`${API_BASE}/users/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to update user')
+  }
+  return res.json()
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  const res = await fetchWithAuth(`${API_BASE}/users/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { detail?: string }).detail || 'Failed to delete user')
+  }
+}

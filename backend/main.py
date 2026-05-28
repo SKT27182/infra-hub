@@ -8,18 +8,26 @@ from fastapi.openapi.utils import get_openapi
 
 from config import settings
 from infra_docker import DockerClient
-from routers import health, services, auth
+from routers import health, services, auth, users, profile
 from services.user_db import UserStoreUnavailableError, user_service
 from services.auth import auth_service
+from utils.logger import create_logger
+
+logger = create_logger(__name__, level=settings.log_level)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Starting Infra Hub API...")
     DockerClient.initialize()
+    logger.info("Docker client initialized")
     await user_service.ensure_user_table()
     await user_service.ensure_default_admin_user()
+    logger.info("User store ready")
     yield
+    logger.info("Shutting down Infra Hub API...")
     DockerClient.close()
+    logger.info("Cleanup complete")
 
 
 app = FastAPI(
@@ -38,6 +46,7 @@ async def get_docs_auth(credentials: HTTPBasicCredentials = Depends(security)):
     try:
         user = await user_service.get_user_by_email(credentials.username)
     except UserStoreUnavailableError as exc:
+        logger.warning("Docs auth unavailable: user database unreachable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Documentation authentication is unavailable because the user database is unreachable.",
@@ -89,6 +98,8 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api", tags=["Health"])
 app.include_router(services.router, prefix="/api", tags=["Services"])
 app.include_router(auth.router, prefix="/api", tags=["Auth"])
+app.include_router(profile.router, prefix="/api", tags=["Auth"])
+app.include_router(users.router, prefix="/api", tags=["Users"])
 
 
 @app.get("/")

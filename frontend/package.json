@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "infra-hub-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -17,6 +17,7 @@
     "radix-ui": "^1.4.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-resizable-panels": "^4.11.2",
     "react-router-dom": "^7.13.0",
     "tailwind-merge": "^3.4.0"
   },

@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react"
+import { applyAccentTokens, loadAccentId } from "@/lib/accent-presets"
 
 type Theme = "dark" | "light" | "system"
 
@@ -35,17 +36,18 @@ export function ThemeProvider({
 
     root.classList.remove("light", "dark")
 
+    let resolved: "light" | "dark" = "dark"
     if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
+      resolved = window.matchMedia("(prefers-color-scheme: dark)")
         .matches
         ? "dark"
         : "light"
-
-      root.classList.add(systemTheme)
-      return
+      root.classList.add(resolved)
+    } else {
+      resolved = theme
+      root.classList.add(theme)
     }
-
-    root.classList.add(theme)
+    applyAccentTokens(loadAccentId(), resolved)
   }, [theme])
 
   const value = {

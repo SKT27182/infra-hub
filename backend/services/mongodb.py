@@ -9,7 +9,10 @@ from bson import json_util
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from config import settings
+from utils.logger import create_logger
 from .base import BaseService
+
+logger = create_logger(__name__, level=settings.log_level)
 
 
 class MongoDBService(BaseService):
@@ -56,6 +59,7 @@ class MongoDBService(BaseService):
                 "version": server_info.get("version", "unknown"),
             }
         except Exception as e:
+            logger.warning("MongoDB get_info failed: %s", e)
             return {"error": str(e), "status": self.get_status().model_dump()}
 
     async def drop_database(self, name: str) -> bool:
@@ -119,6 +123,7 @@ class MongoDBService(BaseService):
 
             return {"success": False, "error": f"Unsupported action: {action}"}
         except Exception as e:
+            logger.error("MongoDB query failed action=%s: %s", action, e)
             return {"success": False, "error": str(e)}
         finally:
             client.close()

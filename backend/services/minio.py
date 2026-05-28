@@ -8,7 +8,10 @@ from minio import Minio
 from minio.error import S3Error
 
 from config import settings
+from utils.logger import create_logger
 from .base import BaseService
+
+logger = create_logger(__name__, level=settings.log_level)
 
 
 class MinIOService(BaseService):
@@ -56,6 +59,7 @@ class MinIOService(BaseService):
                 "buckets": details,
             }
         except Exception as e:
+            logger.warning("MinIO get_info failed: %s", e)
             return {"error": str(e), "status": self.get_status().model_dump()}
 
     async def create_bucket(self, name: str) -> bool:
@@ -151,6 +155,8 @@ class MinIOService(BaseService):
 
             return {"success": False, "error": f"Unsupported action: {action}"}
         except S3Error as e:
+            logger.error("MinIO S3 error action=%s: %s", action, e)
             return {"success": False, "error": str(e)}
         except Exception as e:
+            logger.error("MinIO query failed action=%s: %s", action, e)
             return {"success": False, "error": str(e)}

@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useService, useServiceInfo, useServiceLogs, useServiceActions } from '@/hooks'
+import { useDocumentTitle } from '@/hooks/useDocumentTitle'
+import { ResizableShell } from '@/components/layout/ResizableShell'
 import { cn } from '@/lib/utils'
 
 export function ServiceDetailPage() {
@@ -13,6 +15,10 @@ export function ServiceDetailPage() {
   const { data: info } = useServiceInfo(name || '')
   const { data: logs, refetch: refetchLogs } = useServiceLogs(name || '', 50)
   const { start, stop, restart } = useServiceActions(name || '')
+
+  useDocumentTitle(
+    service ? `${service.display_name} — Infra Hub` : 'Service — Infra Hub'
+  )
 
   if (isLoading || !service) {
     return (
@@ -24,9 +30,8 @@ export function ServiceDetailPage() {
 
   const isActing = start.isPending || stop.isPending || restart.isPending
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
+  const mainColumn = (
+    <div className="space-y-6 h-full overflow-auto pr-2">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold">{service.display_name}</h1>
@@ -53,7 +58,6 @@ export function ServiceDetailPage() {
         </div>
       </div>
 
-      {/* Actions */}
       <Card>
         <CardHeader>
           <CardTitle>Actions</CardTitle>
@@ -76,36 +80,48 @@ export function ServiceDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Info */}
       {info && (
         <Card>
           <CardHeader>
             <CardTitle>Service Information</CardTitle>
           </CardHeader>
           <CardContent>
-            <pre className="overflow-auto rounded-lg bg-muted p-4 text-sm">
+            <pre className="overflow-auto rounded-lg bg-muted p-4 text-sm max-h-[50vh]">
               {JSON.stringify(info.info, null, 2)}
             </pre>
           </CardContent>
         </Card>
       )}
+    </div>
+  )
 
-      {/* Logs */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Logs</CardTitle>
-          <Button variant="ghost" size="sm" onClick={() => refetchLogs()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-64 rounded-lg bg-muted">
-            <pre className="p-4 font-mono text-xs">
-              {logs?.logs || 'No logs available'}
-            </pre>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+  const logsColumn = (
+    <Card className="h-full flex flex-col">
+      <CardHeader className="flex flex-row items-center justify-between shrink-0">
+        <CardTitle>Logs</CardTitle>
+        <Button variant="ghost" size="sm" onClick={() => refetchLogs()}>
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      </CardHeader>
+      <CardContent className="flex-1 min-h-0">
+        <ScrollArea className="h-[calc(100vh-12rem)] rounded-lg bg-muted">
+          <pre className="p-4 font-mono text-xs">
+            {logs?.logs || 'No logs available'}
+          </pre>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  )
+
+  return (
+    <div className="space-y-6 h-[calc(100vh-8rem)] min-h-[480px]">
+      <div className="hidden lg:block h-full">
+        <ResizableShell main={mainColumn} right={logsColumn} storageKey="infra-service-detail" />
+      </div>
+      <div className="lg:hidden space-y-6">
+        {mainColumn}
+        {logsColumn}
+      </div>
     </div>
   )
 }

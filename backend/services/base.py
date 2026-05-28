@@ -7,7 +7,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from config import settings
 from infra_docker import DockerClient
+from utils.logger import create_logger
+
+logger = create_logger(__name__, level=settings.log_level)
 
 
 class ServiceStatus(BaseModel):
@@ -49,6 +53,7 @@ class BaseService(ABC):
         container = DockerClient.get_container(self.container_name)
 
         if container is None:
+            logger.debug("Container not found for service %s", self.name)
             return ServiceStatus(
                 name=self.name,
                 display_name=self.display_name,
@@ -68,6 +73,9 @@ class BaseService(ABC):
             healthy = health_info.get("Status") == "healthy"
         else:
             healthy = running
+
+        if running and not healthy:
+            logger.warning("Service %s running but unhealthy", self.name)
 
         # Get ports
         ports = []

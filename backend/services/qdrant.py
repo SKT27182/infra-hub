@@ -7,7 +7,10 @@ from typing import Any
 from qdrant_client import QdrantClient
 
 from config import settings
+from utils.logger import create_logger
 from .base import BaseService
+
+logger = create_logger(__name__, level=settings.log_level)
 
 
 class QdrantService(BaseService):
@@ -59,6 +62,7 @@ class QdrantService(BaseService):
                 "total_collections": len(details),
             }
         except Exception as e:
+            logger.warning("Qdrant get_info failed: %s", e)
             return {"error": str(e), "status": self.get_status().model_dump()}
 
     async def delete_collection(self, name: str) -> bool:
@@ -158,6 +162,7 @@ class QdrantService(BaseService):
 
             return {"success": False, "error": f"Unsupported action: {action}"}
         except Exception as e:
+            logger.error("Qdrant query failed action=%s: %s", action, e)
             return {"success": False, "error": str(e)}
         finally:
             client.close()

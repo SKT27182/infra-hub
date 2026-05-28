@@ -8,7 +8,10 @@ from typing import Any
 import asyncpg
 
 from config import settings
+from utils.logger import create_logger
 from .base import BaseService
+
+logger = create_logger(__name__, level=settings.log_level)
 
 
 class PostgresService(BaseService):
@@ -55,6 +58,7 @@ class PostgresService(BaseService):
                 "version": version or "unknown",
             }
         except Exception as e:
+            logger.warning("Postgres get_info failed: %s", e)
             return {"error": str(e), "status": self.get_status().model_dump()}
 
     async def create_database(self, name: str) -> bool:
@@ -82,6 +86,7 @@ class PostgresService(BaseService):
             }
 
         if not self._readonly_query_pattern.match(sql):
+            logger.warning("Postgres query rejected: not read-only")
             return {
                 "success": False,
                 "error": "Only read-only queries are allowed (SELECT/WITH/SHOW/EXPLAIN)",
@@ -106,6 +111,7 @@ class PostgresService(BaseService):
                 "rows": [dict(row) for row in rows],
             }
         except Exception as e:
+            logger.error("Postgres query failed on %s: %s", target_db, e)
             return {"success": False, "error": str(e), "database": target_db}
 
     async def drop_database(self, name: str) -> bool:
