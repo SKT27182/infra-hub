@@ -1,12 +1,12 @@
 # Infra Hub
 
-Centralized infrastructure platform for running shared Docker services once and reusing them across projects.
+Centralized infrastructure platform for running shared Docker services once and reusing them across projects (FlexSearch, RootAgent, and others).
 
 ## What this project does
 
-- Runs core services in Docker (`postgres`, `redis`, `mongodb`, `qdrant`, `minio`) with persistent volumes
+- Runs core services in Docker (`postgres`, `redis`, `mongodb`, `qdrant`, `minio`, `neo4j`) with persistent volumes
 - Exposes service/admin status and control via FastAPI backend
-- Provides a React dashboard frontend
+- Provides a React dashboard frontend with env-driven admin URLs (no hardcoded `localhost`)
 - Keeps service URLs, container names, and ports environment-driven through `backend/config.py`
 - Uses frontend `/api` calls with Vite dev proxy (local) and Nginx reverse proxy (server)
 
@@ -23,8 +23,19 @@ Frontend calls `'/api'` only:
 
 ## Environment files
 
-- `backend/.env` - backend app port, CORS, service/admin host+ports, credentials
-- `frontend/.env` - frontend dev port and local proxy target
+- `backend/.env` — **single source of truth** for Docker Compose ports/credentials, backend app port, CORS, `SERVICE_PUBLIC_HOST`, and admin URLs
+- `frontend/.env` — frontend dev port and local proxy target
+
+Docker Compose reads `backend/.env` via `docker compose --env-file backend/.env` (all `make up`, `make down`, etc. do this automatically).
+
+- **Host ports** (e.g. `POSTGRES_PORT=54321`, `REDIS_PORT=63791`) — what you connect to from your machine
+- **Internal ports** (e.g. `MINIO_INTERNAL_CONSOLE_PORT=9001`) — ports inside the container; used in commands, healthchecks, and `host:container` mappings. Change these only when you remap both sides together.
+
+If you run Compose directly:
+
+```bash
+docker compose --env-file backend/.env up -d
+```
 
 Templates:
 
@@ -57,45 +68,204 @@ tail -f ~/.local/share/dev-logs/infra-hub/backend.log ~/.local/share/dev-logs/in
 make dev
 ```
 
+After `make up` or `make dev-local`, print app and admin URLs:
+
+```bash
+make print-urls
+```
+
 ## Runtime URLs (env-driven)
 
-Default local values are controlled by env:
+Default local values are controlled by env in `backend/.env`:
 
-- Frontend: `http://localhost:${VITE_PORT}`
-- Backend API: `http://127.0.0.1:${API_PORT}`
-- API docs: `http://127.0.0.1:${API_PORT}/api/docs`
+| Purpose | URL pattern |
+|--------|-------------|
+| Frontend | `http://<SERVICE_PUBLIC_HOST>:<VITE_PORT>` |
+| Backend API | `http://<SERVICE_PUBLIC_HOST>:<API_PORT>` |
+| API docs | `http://<SERVICE_PUBLIC_HOST>:<API_PORT>/api/docs` |
+| Infra Hub login | `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env` |
 
-Admin UI links in the dashboard are built from:
+Admin UI links in the dashboard are built from `SERVICE_PUBLIC_HOST` and per-service port envs (see table below).
 
-- `SERVICE_PUBLIC_HOST`
-- service/admin port envs (for pgAdmin, RedisInsight, Mongo Express, Qdrant, MinIO)
+## Infra services overview
+
+| Service | Container | Host port (typical) | Use when |
+|---------|-----------|---------------------|----------|
+| PostgreSQL | `infra-postgres` | `54321` | Structured data: users, metadata, transactions |
+| Redis | `infra-redis` | `63791` | Cache, sessions, pub/sub, rate limits |
+| MongoDB | `infra-mongodb` | `27018` | Flexible JSON documents, logs, configs |
+| Qdrant | `infra-qdrant` | `6333` (REST), `6334` (gRPC) | Vector embeddings, semantic search, RAG |
+| MinIO | `infra-minio` | `9000` (API), `9001` (console) | S3-compatible object storage |
+| Neo4j | `infra-neo4j` | `7474` (Browser), `7687` (Bolt) | Knowledge graphs, Graph RAG |
+
+App projects connect to these via host ports on `127.0.0.1` (or `SERVICE_PUBLIC_HOST`) using credentials from their own `.env` files, which should match infra-hub `backend/.env`.
+
+## Admin UIs
+
+All admin URLs use `SERVICE_PUBLIC_HOST` from `backend/.env` (default `127.0.0.1`). Credentials are **not** hardcoded in this repo — set them in `backend/.env`.
+
+| Admin UI | URL (default local) | Port env | Login / access |
+|----------|---------------------|----------|----------------|
+| pgAdmin | `http://127.0.0.1:5050` | `PGADMIN_PORT` | `PGADMIN_EMAIL` / `PGADMIN_PASSWORD` |
+| RedisInsight | `http://127.0.0.1:5540` | `REDISINSIGHT_PORT` | Preconfigured DB `infra-redis` (`redis:6379`, password `REDIS_PASSWORD`) |
+| Mongo Express | `http://127.0.0.1:8081` | `MONGO_EXPRESS_PORT` | Basic auth disabled locally (`ME_CONFIG_BASICAUTH=false`) |
+| Qdrant dashboard | `http://127.0.0.1:6333/dashboard` | `QDRANT_REST_PORT` | Enter `QDRANT_API_KEY` from `backend/.env` when set |
+| MinIO Console | `http://127.0.0.1:9001` | `MINIO_CONSOLE_PORT` | `MINIO_USER` / `MINIO_PASSWORD` |
+| Neo4j Browser | `http://127.0.0.1:7474` | `NEO4J_HTTP_PORT` | `NEO4J_USER` / `NEO4J_PASSWORD` |
+
+Service pages in the Infra Hub UI show an **Admin access** card with the same URL and login hints from the backend `get_info` API.
+
+## How to use each service
+
+### PostgreSQL (`infra-postgres`, port `54321`)
+
+- **What**: Relational database for structured application data.
+- **Admin**: pgAdmin at `http://<SERVICE_PUBLIC_HOST>:<PGADMIN_PORT>`.
+- **Connect**: `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@127.0.0.1:54321/<POSTGRES_DB>` (adjust user/password/db from `.env`).
+- **Workflow**: Create per-app databases (e.g. `flexsearch`, `rootagent`); run Alembic or `init_db()` migrations from each app backend. Infra Hub stores its own users in PostgreSQL.
+
+### Redis (`infra-redis`, port `63791`)
+
+- **What**: In-memory cache, session store, pub/sub.
+- **Admin**: RedisInsight at `http://<SERVICE_PUBLIC_HOST>:<REDISINSIGHT_PORT>` — connection alias `infra-redis` is pre-added via Docker env (`RI_REDIS_*`).
+- **Connect**: `redis://:<REDIS_PASSWORD>@127.0.0.1:63791`
+- **Workflow**: Inspect keys/TTL in RedisInsight or use Infra Hub Redis query API; apps use the same URL from their `.env`.
+
+### MongoDB (`infra-mongodb`, port `27018`)
+
+- **What**: Document database for JSON documents.
+- **Admin**: Mongo Express at `http://<SERVICE_PUBLIC_HOST>:<MONGO_EXPRESS_PORT>` (no login in default local config).
+- **Connect**: `mongodb://<MONGO_USER>:<MONGO_PASSWORD>@127.0.0.1:27018`
+- **Workflow**: Browse/create databases and collections in Mongo Express or via Infra Hub MongoDB page.
+
+### Qdrant (`infra-qdrant`, REST `6333`, gRPC `6334`)
+
+- **What**: Vector database for embeddings and similarity search.
+- **Admin**: Dashboard at `http://<SERVICE_PUBLIC_HOST>:<QDRANT_REST_PORT>/dashboard`.
+- **API key**: When `QDRANT_API_KEY` is set in `backend/.env`, the dashboard and REST API require that key (compose sets `QDRANT__SERVICE__API_KEY`). This is expected — paste the key from `.env` into the dashboard prompt.
+- **Connect**: `QdrantClient` with `url` and `api_key` matching `.env`; FlexSearch/RootAgent use the same values.
+
+### MinIO (`infra-minio`, API `9000`, console `9001`)
+
+- **What**: S3-compatible object storage (files, PDFs, artifacts).
+- **Admin**: Console at `http://<SERVICE_PUBLIC_HOST>:<MINIO_CONSOLE_PORT>` — login `MINIO_USER` / `MINIO_PASSWORD`.
+- **Connect**: S3 endpoint `http://127.0.0.1:9000` with same credentials; use boto3, minio-py, or the console.
+- **Workflow**: Create buckets per app; upload/download via console, `mc` CLI, or SDKs. Compose sets `MINIO_SERVER_URL` and `MINIO_BROWSER_REDIRECT_URL` from `SERVICE_PUBLIC_HOST` so redirects work locally.
+
+### Neo4j (`infra-neo4j`, Browser `7474`, Bolt `7687`)
+
+- **What**: Property graph database for knowledge graphs and Graph RAG.
+- **Admin**: Neo4j Browser at `http://<SERVICE_PUBLIC_HOST>:<NEO4J_HTTP_PORT>`.
+- **Connect**: `bolt://<SERVICE_PUBLIC_HOST>:<NEO4J_BOLT_PORT>` with `NEO4J_USER` / `NEO4J_PASSWORD` from `.env`; FlexSearch Graph RAG uses the same values.
+- **Workflow**: Explore graphs interactively in Neo4j Browser; run read-only Cypher from the Infra Hub Neo4j page.
+
+### How services fit your stack
+
+```mermaid
+flowchart TB
+  subgraph apps [App projects]
+    FS[FlexSearch]
+    RA[RootAgent]
+    IH[Infra Hub]
+  end
+  subgraph infra [infra-hub Docker]
+    PG[(PostgreSQL)]
+    RD[(Redis)]
+    MG[(MongoDB)]
+    QD[(Qdrant)]
+    MN[(MinIO)]
+    NJ[(Neo4j)]
+  end
+  FS --> PG
+  FS --> QD
+  FS --> MN
+  FS --> NJ
+  RA --> PG
+  RA --> RD
+  RA --> MN
+  IH --> PG
+  IH --> RD
+  IH --> MG
+  IH --> QD
+  IH --> MN
+```
 
 ## Important behavior
 
 1. `make dev` runs infra services in Docker only.
-2. `make dev-local` starts Docker infra services, then runs backend/frontend locally.
+2. `make dev-local` starts Docker infra services, waits for PostgreSQL, then runs backend/frontend locally.
 3. Docs/login auth needs PostgreSQL reachable.
-4. Backend returns `503` when user DB is unavailable (instead of misleading `401` loops).
+4. Backend returns `503` when the user database is unavailable (instead of misleading `401` loops).
+5. After `make clean-hard`, run `make up` then `make dev-local` so containers and local processes are fresh.
 
 ## Make commands
 
 ```bash
-make up             # start all Docker services
-make down           # stop Docker services + local backend/frontend pids
-make dev            # run infra services in Docker
-make dev-local      # run infra (Docker) + backend/frontend locally
-make logs           # docker compose logs -f
-make ps             # docker compose ps
-make health         # quick health checks
-make clean          # remove local caches and pid files
-make clean-all      # remove logs + Docker volumes
+make install      # uv sync + pnpm install
+make up           # start all Docker services + print-urls
+make down         # stop Docker services + local backend/frontend pids
+make dev          # run infra services in Docker (alias: up)
+make dev-local    # Docker infra + local backend/frontend
+make wait-db      # wait for infra-postgres healthy (used by dev-local)
+make print-urls   # backend, frontend, and admin UI URLs from .env
+make logs         # docker compose logs -f
+make ps           # docker compose ps
+make health       # data services + admin UI health checks
+make clean        # remove local caches and pid files
+make clean-all    # clean + docker compose down -v
+make clean-hard   # stop-local, down --volumes --rmi local, rm ./volumes
 ```
+
+Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mongodb`, `make up-qdrant`, `make up-minio`.
+
+## Troubleshooting
+
+### After `clean-hard`
+
+1. `make up` (or `make dev-local`)
+2. Confirm `make health` — especially RedisInsight and MinIO console under **Admin UIs**
+3. Log into Infra Hub with `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `backend/.env`
+4. If login returns **503**, a stale backend may still be bound to `API_PORT` — run `make stop-local` then `make dev-local` again
+
+### pgAdmin does not open or times out
+
+- Often caused by `./volumes/pgadmin` permission errors after `clean-hard` (container cannot write `/var/lib/pgadmin/sessions`)
+- Compose uses a **named volume** `pgadmin_data` and fixes ownership on startup
+- Recreate: `docker compose --env-file backend/.env up -d pgadmin --force-recreate`
+- Login: `PGADMIN_EMAIL` / `PGADMIN_PASSWORD` from `backend/.env`
+- Direct URL: `http://127.0.0.1:5050` (or your `PGADMIN_PORT`)
+
+### RedisInsight restart loop or empty UI
+
+- Compose uses a **named volume** `redisinsight_data` (not `./volumes/redisinsight`) to avoid host permission issues after `clean-hard`
+- Health endpoint: `curl -sf http://127.0.0.1:5540/api/health/`
+- Open RedisInsight and use the preconfigured `infra-redis` connection
+
+### MinIO console blank or login fails
+
+- Use `MINIO_USER` / `MINIO_PASSWORD` from `backend/.env` (password must be ≥ 8 characters)
+- Ensure `MINIO_SERVER_URL` and `MINIO_BROWSER_REDIRECT_URL` match `SERVICE_PUBLIC_HOST` and ports (set in `docker-compose.yml`)
+- Open console via `make print-urls`, not a stale bookmark to `localhost` if you changed `SERVICE_PUBLIC_HOST`
+
+### Qdrant dashboard asks for API key
+
+- Expected when `QDRANT_API_KEY` is set in `backend/.env`
+- Copy that value into the dashboard API key field (same key apps use in `QdrantClient`)
+
+### Stale data after reset
+
+- `docker compose down -v` alone may not clear bind-mounted data under `./volumes`; `make clean-hard` removes `./volumes` explicitly
 
 ## Reverse proxy note (Nginx)
 
 Use one domain and proxy:
 
-- `/` -> frontend
-- `/api` -> backend
+- `/` → frontend
+- `/api` → backend
 
-No frontend code changes are needed when moving from local to server because frontend uses relative `/api`.
+Set `SERVICE_PUBLIC_HOST` to your public hostname so admin URLs and MinIO redirects are correct. No frontend code changes are needed when moving from local to server because the frontend uses relative `/api`.
+
+## Further reading
+
+- Backend port/env reference: [`backend/README.md`](backend/README.md)
+- Original project vision (unchanged): [`infra-hub.md`](infra-hub.md)

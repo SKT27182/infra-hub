@@ -8,6 +8,7 @@ import redis.asyncio as redis
 
 from config import settings
 from utils.logger import create_logger
+from .admin_access import admin_access_block
 from .base import BaseService
 
 logger = create_logger(__name__, level=settings.log_level)
@@ -42,6 +43,14 @@ class RedisService(BaseService):
 
             return {
                 "status": self.get_status().model_dump(),
+                "admin_access": admin_access_block(
+                    url=settings.redis_admin_url,
+                    instructions=[
+                        "Open RedisInsight; the connection 'infra-redis' is preconfigured.",
+                        "Host apps use redis:// on the host-mapped port with REDIS_PASSWORD from backend/.env.",
+                    ],
+                    login={"password_env": "REDIS_PASSWORD"},
+                ),
                 "connection": {
                     "url": f"redis://{settings.service_public_host}:{settings.redis_port}",
                     "host": settings.service_public_host,

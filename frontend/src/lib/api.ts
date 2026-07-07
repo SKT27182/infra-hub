@@ -194,6 +194,15 @@ export async function qdrantQuery(action: string, params: Record<string, unknown
   return res.json()
 }
 
+export async function neo4jQuery(action: string, params: Record<string, unknown> = {}): Promise<ServiceQueryResponse> {
+  const res = await fetchWithAuth(`${API_BASE}/services/neo4j/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, params }),
+  })
+  return res.json()
+}
+
 export async function createPostgresDB(name: string): Promise<{ success: boolean }> {
   const res = await fetchWithAuth(`${API_BASE}/services/postgres/databases/${name}`, { method: 'POST' })
   return res.json()

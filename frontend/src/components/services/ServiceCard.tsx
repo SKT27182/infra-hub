@@ -28,6 +28,7 @@ const serviceIcons: Record<string, string> = {
   mongodb: '🍃',
   qdrant: '🔷',
   minio: '📦',
+  neo4j: '🕸️',
 }
 
 interface ServiceCardProps {
@@ -48,6 +49,8 @@ export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
     if (info.databases) return `${(info.databases as any[]).length} Databases`
     if (info.buckets) return `${(info.buckets as any[]).length} Buckets`
     if (info.collections) return `${(info.collections as any[]).length} Collections`
+    if (typeof info.node_count === 'number') return `${String(info.node_count)} Nodes`
+    if (info.labels) return `${(info.labels as any[]).length} Labels`
     if (typeof info.total_keys === 'number') return `${String(info.total_keys)} Keys`
     return null
   }

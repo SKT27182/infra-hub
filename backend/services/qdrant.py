@@ -8,6 +8,7 @@ from qdrant_client import QdrantClient
 
 from config import settings
 from utils.logger import create_logger
+from .admin_access import admin_access_block
 from .base import BaseService
 
 logger = create_logger(__name__, level=settings.log_level)
@@ -51,8 +52,19 @@ class QdrantService(BaseService):
                     )
             client.close()
 
+            api_key_set = bool(settings.qdrant_api_key)
             return {
                 "status": self.get_status().model_dump(),
+                "admin_access": admin_access_block(
+                    url=settings.qdrant_admin_url,
+                    instructions=[
+                        "Open the Qdrant dashboard.",
+                        "When prompted for an API key, use the value of QDRANT_API_KEY in backend/.env.",
+                        "Apps must pass the same key in the api-key header or QdrantClient api_key.",
+                    ],
+                    api_key_required=api_key_set,
+                    login={"api_key_env": "QDRANT_API_KEY"} if api_key_set else None,
+                ),
                 "connection": {
                     "url": f"http://{settings.service_public_host}:{settings.qdrant_port}",
                     "host": settings.service_public_host,

@@ -124,6 +124,16 @@ class Settings(BaseSettings):
     minio_user: str = "admin"
     minio_password: str = "adminadmin"
 
+    # Neo4j
+    neo4j_service_name: str = "neo4j"
+    neo4j_display_name: str = "Neo4j"
+    neo4j_container_name: str = "infra-neo4j"
+    neo4j_host: str = "localhost"
+    neo4j_http_port: int = 7474
+    neo4j_bolt_port: int = 7687
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = "password"
+
     # JWT Authentication
     jwt_secret: str = "secret-key-change-this-in-production"
     jwt_algorithm: str = "HS256"
@@ -179,6 +189,16 @@ class Settings(BaseSettings):
     def minio_admin_url(self) -> str:
         """MinIO console URL used by the dashboard."""
         return f"http://{self.service_public_host}:{self.minio_console_port}"
+
+    @property
+    def neo4j_admin_url(self) -> str:
+        """Neo4j Browser URL used by the dashboard."""
+        return f"http://{self.service_public_host}:{self.neo4j_http_port}"
+
+    @property
+    def neo4j_bolt_uri(self) -> str:
+        """Neo4j Bolt URI for client connections."""
+        return f"bolt://{self.service_public_host}:{self.neo4j_bolt_port}"
 
 
 @lru_cache

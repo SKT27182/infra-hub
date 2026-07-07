@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ExternalLink, Database, Trash2, Copy, Check, Users, Server } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { AdminAccessCard, type AdminAccess } from '@/components/services/AdminAccessCard'
 import { useService, usePostgresDatabases, usePostgresActions, useServiceInfo } from '@/hooks'
 import { postgresQuery, type PostgresQueryResponse } from '@/lib/api'
 import {
@@ -30,6 +31,8 @@ export function PostgresPage() {
   const [queryResult, setQueryResult] = useState<PostgresQueryResponse | null>(null)
 
   const info = infoData?.info || {}
+  const adminAccess = info.admin_access as AdminAccess | undefined
+  const adminUrl = service?.admin_url || adminAccess?.url
   const databaseNames = (databases || []).map((db: Record<string, unknown>) => String(db.name))
 
   useEffect(() => {
@@ -94,15 +97,16 @@ export function PostgresPage() {
               {service.healthy ? 'Healthy' : 'Unhealthy'}
             </Badge>
           )}
-          <Button
-            variant="outline"
-            onClick={() => window.open('http://localhost:5050', '_blank')}
-          >
-            <ExternalLink className="mr-2 h-4 w-4" />
-            pgAdmin
-          </Button>
+          {adminUrl && (
+            <Button variant="outline" onClick={() => window.open(adminUrl, '_blank')}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              pgAdmin
+            </Button>
+          )}
         </div>
       </div>
+
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
 
       {/* Stats Summary */}
       <div className="grid gap-4 sm:grid-cols-3">

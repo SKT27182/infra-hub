@@ -6,3 +6,10 @@ ORDER BY table_name;`
 
 export const POSTGRES_QUERY_HINT =
   'Starter query — lists all tables in the public schema'
+
+export const DEFAULT_NEO4J_CYPHER = `MATCH (n)
+RETURN labels(n) AS labels, count(*) AS count
+LIMIT 25`
+
+export const NEO4J_CYPHER_HINT =
+  'Read-only Cypher only. Use Neo4j Browser for interactive graph visualization (e.g. MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 50).'

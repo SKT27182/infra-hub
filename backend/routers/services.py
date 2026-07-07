@@ -6,6 +6,7 @@ from services.redis import RedisService
 from services.minio import MinIOService
 from services.mongodb import MongoDBService
 from services.qdrant import QdrantService
+from services.neo4j import Neo4jService
 from config import settings
 from services.auth import get_current_user
 from utils.logger import create_logger
@@ -20,6 +21,7 @@ redis = RedisService()
 minio = MinIOService()
 mongodb = MongoDBService()
 qdrant = QdrantService()
+neo4j = Neo4jService()
 
 SERVICES = {
     "postgres": postgres,
@@ -27,6 +29,7 @@ SERVICES = {
     "minio": minio,
     "mongodb": mongodb,
     "qdrant": qdrant,
+    "neo4j": neo4j,
 }
 
 
@@ -160,6 +163,11 @@ async def query_minio(payload: GenericActionQueryRequest):
 @router.post("/qdrant/query")
 async def query_qdrant(payload: GenericActionQueryRequest):
     return await qdrant.query(payload.action, payload.params)
+
+
+@router.post("/neo4j/query")
+async def query_neo4j(payload: GenericActionQueryRequest):
+    return await neo4j.query(payload.action, payload.params)
 
 
 @router.post("/minio/buckets/{bucket_name}")

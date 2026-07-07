@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ExternalLink, Database, Trash2, Copy, Check, Layers, Server } from 'lucide-react'
 import { useState } from 'react'
+import { AdminAccessCard, type AdminAccess } from '@/components/services/AdminAccessCard'
 import { useService, useMongoDBDatabases, useMongoDBActions, useServiceInfo } from '@/hooks'
 import { mongodbQuery, type ServiceQueryResponse } from '@/lib/api'
 
@@ -25,6 +26,8 @@ export function MongoDBPage() {
   const [queryResult, setQueryResult] = useState<ServiceQueryResponse | null>(null)
 
   const info = infoData?.info || {}
+  const adminAccess = info.admin_access as AdminAccess | undefined
+  const adminUrl = service?.admin_url || adminAccess?.url
 
   const copyEndpoint = () => {
     const url = (info.connection as any)?.url || `mongodb://127.0.0.1:${service?.ports[0]?.split(':')[0] || '27017'}`
@@ -87,15 +90,16 @@ export function MongoDBPage() {
               {service.healthy ? 'Healthy' : 'Unhealthy'}
             </Badge>
           )}
-          <Button
-            variant="outline"
-            onClick={() => window.open('http://localhost:8081', '_blank')}
-          >
-            <ExternalLink className="mr-2 h-4 w-4" />
-            Mongo Express
-          </Button>
+          {adminUrl && (
+            <Button variant="outline" onClick={() => window.open(adminUrl, '_blank')}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Mongo Express
+            </Button>
+          )}
         </div>
       </div>
+
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
 
       {/* Stats Summary */}
       <div className="grid gap-4 sm:grid-cols-3">

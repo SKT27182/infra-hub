@@ -10,6 +10,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from config import settings
 from utils.logger import create_logger
+from .admin_access import admin_access_block
 from .base import BaseService
 
 logger = create_logger(__name__, level=settings.log_level)
@@ -51,6 +52,13 @@ class MongoDBService(BaseService):
 
             return {
                 "status": self.get_status().model_dump(),
+                "admin_access": admin_access_block(
+                    url=settings.mongodb_admin_url,
+                    instructions=[
+                        "Open Mongo Express to browse databases and collections.",
+                        "Basic auth is disabled in local compose (ME_CONFIG_BASICAUTH=false).",
+                    ],
+                ),
                 "connection": {
                     "url": f"mongodb://{settings.service_public_host}:{settings.mongo_port}"
                 },

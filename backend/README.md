@@ -2,6 +2,8 @@
 
 FastAPI backend for service orchestration, auth, status checks, and service info APIs.
 
+For the full service guide (what each infra service does, admin UIs, credentials, troubleshooting, and Make commands), see the [repository README](../README.md).
+
 ## Environment configuration
 
 Use `backend/.env` (template: `backend/.env.example`).
@@ -51,6 +53,12 @@ make dev-backend
 | Qdrant gRPC | `infra-qdrant` | `6334` | `QDRANT_GRPC_PORT` | `6334` | gRPC endpoint |
 | MinIO API | `infra-minio` | `9000` | `MINIO_PORT` | `9000` | `http://<SERVICE_PUBLIC_HOST>:<MINIO_PORT>` |
 | MinIO Console | `infra-minio` | `9001` | `MINIO_CONSOLE_PORT` | `9001` | `http://<SERVICE_PUBLIC_HOST>:<MINIO_CONSOLE_PORT>` |
+| Neo4j Browser | `infra-neo4j` | `7474` | `NEO4J_HTTP_PORT` | `7474` | `http://<SERVICE_PUBLIC_HOST>:<NEO4J_HTTP_PORT>` |
+| Neo4j Bolt | `infra-neo4j` | `7687` | `NEO4J_BOLT_PORT` | `7687` | `bolt://<SERVICE_PUBLIC_HOST>:<NEO4J_BOLT_PORT>` |
+
+## Admin access API
+
+Each service `get_info()` response may include an `admin_access` block (URL, instructions, optional `login` map, `api_key_required` for Qdrant). The frontend **Admin access** card reads this alongside `service.admin_url` from the services list API.
 
 ## Notes
 

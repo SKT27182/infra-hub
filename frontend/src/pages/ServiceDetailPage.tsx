@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { AdminAccessCard, type AdminAccess } from '@/components/services/AdminAccessCard'
 import { useService, useServiceInfo, useServiceLogs, useServiceActions } from '@/hooks'
 import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { ResizableShell } from '@/components/layout/ResizableShell'
@@ -29,6 +30,8 @@ export function ServiceDetailPage() {
   }
 
   const isActing = start.isPending || stop.isPending || restart.isPending
+  const adminAccess = info?.info?.admin_access as AdminAccess | undefined
+  const adminUrl = service.admin_url || adminAccess?.url
 
   const mainColumn = (
     <div className="space-y-6 h-full overflow-auto pr-2">
@@ -57,6 +60,8 @@ export function ServiceDetailPage() {
           )}
         </div>
       </div>
+
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
 
       <Card>
         <CardHeader>

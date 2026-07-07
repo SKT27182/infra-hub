@@ -9,6 +9,7 @@ from minio.error import S3Error
 
 from config import settings
 from utils.logger import create_logger
+from .admin_access import admin_access_block
 from .base import BaseService
 
 logger = create_logger(__name__, level=settings.log_level)
@@ -51,6 +52,17 @@ class MinIOService(BaseService):
 
             return {
                 "status": self.get_status().model_dump(),
+                "admin_access": admin_access_block(
+                    url=settings.minio_admin_url,
+                    instructions=[
+                        "Open the MinIO Console in your browser.",
+                        "Sign in with MINIO_USER and MINIO_PASSWORD from backend/.env.",
+                    ],
+                    login={
+                        "username": settings.minio_user,
+                        "password_env": "MINIO_PASSWORD",
+                    },
+                ),
                 "connection": {
                     "url": f"http://{settings.service_public_host}:{settings.minio_port}",
                     "access_key": settings.minio_user,

@@ -9,6 +9,7 @@ import asyncpg
 
 from config import settings
 from utils.logger import create_logger
+from .admin_access import admin_access_block
 from .base import BaseService
 
 logger = create_logger(__name__, level=settings.log_level)
@@ -43,6 +44,17 @@ class PostgresService(BaseService):
 
             return {
                 "status": self.get_status().model_dump(),
+                "admin_access": admin_access_block(
+                    url=settings.postgres_admin_url,
+                    instructions=[
+                        "Open pgAdmin and sign in with PGADMIN_EMAIL and PGADMIN_PASSWORD from backend/.env.",
+                        "Register a server pointing at host port POSTGRES_PORT with POSTGRES_USER credentials.",
+                    ],
+                    login={
+                        "email_env": "PGADMIN_EMAIL",
+                        "password_env": "PGADMIN_PASSWORD",
+                    },
+                ),
                 "connection": {
                     "url": f"postgresql://{settings.postgres_user}:{settings.postgres_password}@{settings.service_public_host}:{settings.postgres_port}",
                     "host": settings.service_public_host,

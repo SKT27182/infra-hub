@@ -101,3 +101,19 @@ export function useMinioActions() {
   })
   return { dropBucket }
 }
+
+export function useNeo4jGraphStats() {
+  return useQuery({
+    queryKey: ['neo4j', 'stats'],
+    queryFn: async () => {
+      const { info } = await getServiceInfo('neo4j')
+      return {
+        labels: (info.labels as string[]) || [],
+        relationshipTypes: (info.relationship_types as string[]) || [],
+        nodeCount: typeof info.node_count === 'number' ? info.node_count : 0,
+        relationshipCount:
+          typeof info.relationship_count === 'number' ? info.relationship_count : 0,
+      }
+    },
+  })
+}

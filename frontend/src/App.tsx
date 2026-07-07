@@ -13,6 +13,7 @@ import {
   MongoDBPage,
   QdrantPage,
   MinIOPage,
+  Neo4jPage,
   LoginPage,
   UsersPage,
   SettingsPage,
@@ -157,6 +158,17 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <MinIOPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/services/neo4j"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <Neo4jPage />
             </AppLayout>
           </ProtectedRoute>
         }
