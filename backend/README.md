@@ -55,6 +55,8 @@ make dev-backend
 | MinIO Console | `infra-minio` | `9001` | `MINIO_CONSOLE_PORT` | `9001` | `http://<SERVICE_PUBLIC_HOST>:<MINIO_CONSOLE_PORT>` |
 | Neo4j Browser | `infra-neo4j` | `7474` | `NEO4J_HTTP_PORT` | `7474` | `http://<SERVICE_PUBLIC_HOST>:<NEO4J_HTTP_PORT>` |
 | Neo4j Bolt | `infra-neo4j` | `7687` | `NEO4J_BOLT_PORT` | `7687` | `bolt://<SERVICE_PUBLIC_HOST>:<NEO4J_BOLT_PORT>` |
+| OpenSearch | `infra-opensearch` | `9200` | `OPENSEARCH_HTTP_PORT` | `9200` | `http://<SERVICE_PUBLIC_HOST>:<OPENSEARCH_HTTP_PORT>` |
+| OpenSearch Dashboards | `infra-opensearch-dashboards` | `5601` | `OPENSEARCH_DASHBOARDS_PORT` | `5601` | `http://<SERVICE_PUBLIC_HOST>:<OPENSEARCH_DASHBOARDS_PORT>` |
 
 ## Admin access API
 

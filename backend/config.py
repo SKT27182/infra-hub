@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     app_public_url: str | None = None
     app_public_host: str | None = None
     service_public_host: str = "127.0.0.1"
-    admin_email: str = "admin@infra.local"
-    admin_password: str = "admin12345"
+    admin_email: str
+    admin_password: str
 
     # CORS (local dev origins; APP_PUBLIC_URL is merged in automatically)
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:5143", "http://127.0.0.1:5143"]
@@ -81,8 +81,8 @@ class Settings(BaseSettings):
     pgadmin_port: int = 5050
     postgres_host: str = "localhost"
     postgres_port: int = 54321
-    postgres_user: str = "admin"
-    postgres_password: str = "password"
+    postgres_user: str
+    postgres_password: str
     postgres_db: str = "main_db"
 
     # Redis
@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     redisinsight_port: int = 5540
     redis_host: str = "localhost"
     redis_port: int = 63791
-    redis_password: str = "password"
+    redis_password: str
 
     # MongoDB
     mongodb_service_name: str = "mongodb"
@@ -103,8 +103,8 @@ class Settings(BaseSettings):
     mongo_express_port: int = 8081
     mongo_host: str = "localhost"
     mongo_port: int = 27018
-    mongo_user: str = "admin"
-    mongo_password: str = "password"
+    mongo_user: str
+    mongo_password: str
 
     # Qdrant
     qdrant_service_name: str = "qdrant"
@@ -121,21 +121,30 @@ class Settings(BaseSettings):
     minio_host: str = "localhost"
     minio_port: int = 9000
     minio_console_port: int = 9001
-    minio_user: str = "admin"
-    minio_password: str = "adminadmin"
+    minio_user: str
+    minio_password: str
 
-    # Neo4j
+    # Neo4j (Community Edition requires username neo4j — set NEO4J_USER in .env)
     neo4j_service_name: str = "neo4j"
     neo4j_display_name: str = "Neo4j"
     neo4j_container_name: str = "infra-neo4j"
     neo4j_host: str = "localhost"
     neo4j_http_port: int = 7474
     neo4j_bolt_port: int = 7687
-    neo4j_user: str = "neo4j"
-    neo4j_password: str = "password"
+    neo4j_user: str
+    neo4j_password: str
+
+    # OpenSearch
+    opensearch_service_name: str = "opensearch"
+    opensearch_display_name: str = "OpenSearch"
+    opensearch_container_name: str = "infra-opensearch"
+    opensearch_dashboards_container_name: str = "infra-opensearch-dashboards"
+    opensearch_host: str = "localhost"
+    opensearch_http_port: int = 9200
+    opensearch_dashboards_port: int = 5601
 
     # JWT Authentication
-    jwt_secret: str = "secret-key-change-this-in-production"
+    jwt_secret: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24 hours
 
@@ -199,6 +208,16 @@ class Settings(BaseSettings):
     def neo4j_bolt_uri(self) -> str:
         """Neo4j Bolt URI for client connections."""
         return f"bolt://{self.service_public_host}:{self.neo4j_bolt_port}"
+
+    @property
+    def opensearch_admin_url(self) -> str:
+        """OpenSearch Dashboards URL used by the dashboard."""
+        return f"http://{self.service_public_host}:{self.opensearch_dashboards_port}"
+
+    @property
+    def opensearch_url(self) -> str:
+        """OpenSearch HTTP endpoint for client connections."""
+        return f"http://{self.service_public_host}:{self.opensearch_http_port}"
 
 
 @lru_cache

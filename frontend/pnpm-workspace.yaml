@@ -1,0 +1,3 @@
+allowBuilds:
+  # Vite requires esbuild's install script to prepare its native binary.
+  esbuild: true

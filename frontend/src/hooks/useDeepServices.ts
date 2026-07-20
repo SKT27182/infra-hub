@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { 
-  getServiceInfo, 
-  dropPostgresDB, 
-  dropMinioBucket, 
-  dropMongoDBDB, 
-  deleteQdrantCollection 
+import {
+  getServiceInfo,
+  dropPostgresDB,
+  dropMinioBucket,
+  dropMongoDBDB,
+  deleteQdrantCollection,
+  deleteOpenSearchIndex,
 } from '@/lib/api'
 
 export function usePostgresDatabases() {
@@ -116,4 +117,26 @@ export function useNeo4jGraphStats() {
       }
     },
   })
+}
+
+export function useOpenSearchIndices() {
+  return useQuery({
+    queryKey: ['opensearch', 'indices'],
+    queryFn: async () => {
+      const { info } = await getServiceInfo('opensearch')
+      return (info.indices as any[]) || []
+    },
+  })
+}
+
+export function useOpenSearchActions() {
+  const queryClient = useQueryClient()
+  const dropIndex = useMutation({
+    mutationFn: deleteOpenSearchIndex,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['opensearch', 'indices'] })
+      queryClient.invalidateQueries({ queryKey: ['service-info', 'opensearch'] })
+    },
+  })
+  return { dropIndex }
 }

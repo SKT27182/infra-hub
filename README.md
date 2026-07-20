@@ -4,7 +4,7 @@ Centralized infrastructure platform for running shared Docker services once and 
 
 ## What this project does
 
-- Runs core services in Docker (`postgres`, `redis`, `mongodb`, `qdrant`, `minio`, `neo4j`) with persistent volumes
+- Runs core services in Docker (`postgres`, `redis`, `mongodb`, `qdrant`, `opensearch`, `minio`, `neo4j`) with persistent volumes
 - Exposes service/admin status and control via FastAPI backend
 - Provides a React dashboard frontend with env-driven admin URLs (no hardcoded `localhost`)
 - Keeps service URLs, container names, and ports environment-driven through `backend/config.py`
@@ -23,10 +23,12 @@ Frontend calls `'/api'` only:
 
 ## Environment files
 
-- `backend/.env` — **single source of truth** for Docker Compose ports/credentials, backend app port, CORS, `SERVICE_PUBLIC_HOST`, and admin URLs
+- `backend/.env` — **single source of truth** for Docker Compose ports/credentials, backend app port, CORS, `SERVICE_PUBLIC_HOST`, admin URLs, and `INFRA_PERSIST_DIR`
 - `frontend/.env` — frontend dev port and local proxy target
 
 Docker Compose reads `backend/.env` via `docker compose --env-file backend/.env` (all `make up`, `make down`, etc. do this automatically).
+
+Persistent service data (Postgres, Redis, MinIO, …) is bind-mounted under `INFRA_PERSIST_DIR` (default `~/.local/share/projects/infra-hub/volumes`), not under the repo. Dev logs live under `~/.local/share/projects/infra-hub/dev-logs`. Docker images/containers themselves already live in Docker’s data root (e.g. `/var/lib/docker`), not in the project tree.
 
 - **Host ports** (e.g. `POSTGRES_PORT=54321`, `REDIS_PORT=63791`) — what you connect to from your machine
 - **Internal ports** (e.g. `MINIO_INTERNAL_CONSOLE_PORT=9001`) — ports inside the container; used in commands, healthchecks, and `host:container` mappings. Change these only when you remap both sides together.
@@ -56,10 +58,14 @@ make install
 make dev-local
 ```
 
-Logs are written to `~/.local/share/dev-logs/infra-hub/`:
+Run local development as your normal user, not with `sudo`. Configure Docker
+access for that user; elevating the entire Make command can leave project files
+and persistent data owned by root.
+
+Logs are written to `~/.local/share/projects/infra-hub/dev-logs/`:
 
 ```bash
-tail -f ~/.local/share/dev-logs/infra-hub/backend.log ~/.local/share/dev-logs/infra-hub/frontend.log
+tail -f ~/.local/share/projects/infra-hub/dev-logs/backend.log ~/.local/share/projects/infra-hub/dev-logs/frontend.log
 ```
 
 ### 3. Run infra services in Docker only
@@ -94,7 +100,8 @@ Admin UI links in the dashboard are built from `SERVICE_PUBLIC_HOST` and per-ser
 | PostgreSQL | `infra-postgres` | `54321` | Structured data: users, metadata, transactions |
 | Redis | `infra-redis` | `63791` | Cache, sessions, pub/sub, rate limits |
 | MongoDB | `infra-mongodb` | `27018` | Flexible JSON documents, logs, configs |
-| Qdrant | `infra-qdrant` | `6333` (REST), `6334` (gRPC) | Vector embeddings, semantic search, RAG |
+| Qdrant | `infra-qdrant` | `6333` (REST), `6334` (gRPC) | Vector embeddings, semantic / hybrid search, RAG |
+| OpenSearch | `infra-opensearch` | `9200` (HTTP) | Full-text (BM25), autocomplete, aggregations, k-NN |
 | MinIO | `infra-minio` | `9000` (API), `9001` (console) | S3-compatible object storage |
 | Neo4j | `infra-neo4j` | `7474` (Browser), `7687` (Bolt) | Knowledge graphs, Graph RAG |
 
@@ -102,7 +109,7 @@ App projects connect to these via host ports on `127.0.0.1` (or `SERVICE_PUBLIC_
 
 ## Admin UIs
 
-All admin URLs use `SERVICE_PUBLIC_HOST` from `backend/.env` (default `127.0.0.1`). Credentials are **not** hardcoded in this repo — set them in `backend/.env`.
+All admin URLs use `SERVICE_PUBLIC_HOST` from `backend/.env` (default `127.0.0.1`). Credentials are read from `backend/.env` only — never commit real passwords; see `backend/.env.example` for the local template.
 
 | Admin UI | URL (default local) | Port env | Login / access |
 |----------|---------------------|----------|----------------|
@@ -110,6 +117,7 @@ All admin URLs use `SERVICE_PUBLIC_HOST` from `backend/.env` (default `127.0.0.1
 | RedisInsight | `http://127.0.0.1:5540` | `REDISINSIGHT_PORT` | Preconfigured DB `infra-redis` (`redis:6379`, password `REDIS_PASSWORD`) |
 | Mongo Express | `http://127.0.0.1:8081` | `MONGO_EXPRESS_PORT` | Basic auth disabled locally (`ME_CONFIG_BASICAUTH=false`) |
 | Qdrant dashboard | `http://127.0.0.1:6333/dashboard` | `QDRANT_REST_PORT` | Enter `QDRANT_API_KEY` from `backend/.env` when set |
+| OpenSearch Dashboards | `http://127.0.0.1:5601` | `OPENSEARCH_DASHBOARDS_PORT` | Local security plugin disabled (no login) |
 | MinIO Console | `http://127.0.0.1:9001` | `MINIO_CONSOLE_PORT` | `MINIO_USER` / `MINIO_PASSWORD` |
 | Neo4j Browser | `http://127.0.0.1:7474` | `NEO4J_HTTP_PORT` | `NEO4J_USER` / `NEO4J_PASSWORD` |
 
@@ -140,10 +148,18 @@ Service pages in the Infra Hub UI show an **Admin access** card with the same UR
 
 ### Qdrant (`infra-qdrant`, REST `6333`, gRPC `6334`)
 
-- **What**: Vector database for embeddings and similarity search.
+- **What**: Vector database for embeddings and similarity search (also supports sparse/hybrid BM25-style retrieval).
 - **Admin**: Dashboard at `http://<SERVICE_PUBLIC_HOST>:<QDRANT_REST_PORT>/dashboard`.
 - **API key**: When `QDRANT_API_KEY` is set in `backend/.env`, the dashboard and REST API require that key (compose sets `QDRANT__SERVICE__API_KEY`). This is expected — paste the key from `.env` into the dashboard prompt.
 - **Connect**: `QdrantClient` with `url` and `api_key` matching `.env`; FlexSearch/RootAgent use the same values.
+
+### OpenSearch (`infra-opensearch`, HTTP `9200`; Dashboards `5601`)
+
+- **What**: Search engine for BM25 full-text, autocomplete/suggesters, aggregations/facets, and k-NN vectors. Keep Qdrant for dedicated vector workloads; use OpenSearch when you need search UX features.
+- **Admin**: OpenSearch Dashboards at `http://<SERVICE_PUBLIC_HOST>:<OPENSEARCH_DASHBOARDS_PORT>` (security plugin disabled locally).
+- **Connect**: `http://127.0.0.1:9200` (or `SERVICE_PUBLIC_HOST` + `OPENSEARCH_HTTP_PORT`) with `opensearch-py` / OpenSearch clients.
+- **Host note**: On Linux, OpenSearch may require `sudo sysctl -w vm.max_map_count=262144` (persist via `/etc/sysctl.conf`). Data uses the Docker named volume `opensearch_data` (not under `INFRA_PERSIST_DIR`) to avoid UID permission issues.
+- **Workflow**: Create indices per app; run Query DSL / Dev Tools in Dashboards; use Infra Hub OpenSearch page for list/search/knn/suggest actions.
 
 ### MinIO (`infra-minio`, API `9000`, console `9001`)
 
@@ -173,11 +189,13 @@ flowchart TB
     RD[(Redis)]
     MG[(MongoDB)]
     QD[(Qdrant)]
+    OS[(OpenSearch)]
     MN[(MinIO)]
     NJ[(Neo4j)]
   end
   FS --> PG
   FS --> QD
+  FS --> OS
   FS --> MN
   FS --> NJ
   RA --> PG
@@ -187,6 +205,7 @@ flowchart TB
   IH --> RD
   IH --> MG
   IH --> QD
+  IH --> OS
   IH --> MN
 ```
 
@@ -213,10 +232,10 @@ make ps           # docker compose ps
 make health       # data services + admin UI health checks
 make clean        # remove local caches and pid files
 make clean-all    # clean + docker compose down -v
-make clean-hard   # stop-local, down --volumes --rmi local, rm ./volumes
+make clean-hard   # stop-local, down --volumes --rmi local, rm $$INFRA_PERSIST_DIR
 ```
 
-Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mongodb`, `make up-qdrant`, `make up-minio`.
+Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mongodb`, `make up-qdrant`, `make up-opensearch`, `make up-minio`, `make up-neo4j`.
 
 ## Troubleshooting
 
@@ -229,7 +248,7 @@ Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mon
 
 ### pgAdmin does not open or times out
 
-- Often caused by `./volumes/pgadmin` permission errors after `clean-hard` (container cannot write `/var/lib/pgadmin/sessions`)
+- Often caused by pgAdmin permission errors after `clean-hard` (container cannot write `/var/lib/pgadmin/sessions`)
 - Compose uses a **named volume** `pgadmin_data` and fixes ownership on startup
 - Recreate: `docker compose --env-file backend/.env up -d pgadmin --force-recreate`
 - Login: `PGADMIN_EMAIL` / `PGADMIN_PASSWORD` from `backend/.env`
@@ -237,7 +256,7 @@ Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mon
 
 ### RedisInsight restart loop or empty UI
 
-- Compose uses a **named volume** `redisinsight_data` (not `./volumes/redisinsight`) to avoid host permission issues after `clean-hard`
+- Compose uses a **named volume** `redisinsight_data` (not a bind mount under `INFRA_PERSIST_DIR`) to avoid host permission issues after `clean-hard`
 - Health endpoint: `curl -sf http://127.0.0.1:5540/api/health/`
 - Open RedisInsight and use the preconfigured `infra-redis` connection
 
@@ -252,9 +271,15 @@ Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mon
 - Expected when `QDRANT_API_KEY` is set in `backend/.env`
 - Copy that value into the dashboard API key field (same key apps use in `QdrantClient`)
 
+### OpenSearch fails to start / max virtual memory areas
+
+- Symptom: container exits with `max virtual memory areas vm.max_map_count [65530] is too low`
+- Fix: `sudo sysctl -w vm.max_map_count=262144` and add `vm.max_map_count=262144` to `/etc/sysctl.conf`
+- Then: `make up-opensearch` (or `make up`)
+
 ### Stale data after reset
 
-- `docker compose down -v` alone may not clear bind-mounted data under `./volumes`; `make clean-hard` removes `./volumes` explicitly
+- `docker compose down -v` alone may not clear bind-mounted data under `INFRA_PERSIST_DIR` (default `~/.local/share/projects/infra-hub/volumes`); `make clean-hard` removes that directory explicitly
 
 ## Reverse proxy note (Nginx)
 

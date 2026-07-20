@@ -12,12 +12,22 @@ from routers import health, services, auth, users, profile
 from services.user_db import UserStoreUnavailableError, user_service
 from services.auth import auth_service
 from utils.logger import create_logger
+from utils.logging_bridge import configure_third_party_loggers, setup_unified_logging
 
 logger = create_logger(__name__, level=settings.log_level)
+
+# Route uvicorn/SQLAlchemy into the colored + file logging stack.
+# setup_unified_logging already calls configure_third_party_loggers; re-apply after
+# import so a late uvicorn dictConfig cannot leave plain white handlers behind.
+_log_file = setup_unified_logging(settings.log_level)
+configure_third_party_loggers(settings.log_level)
+logger.info("Unified logging enabled (backend log: %s)", _log_file)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Re-apply after uvicorn's own logging setup (CLI / reload workers).
+    configure_third_party_loggers(settings.log_level)
     logger.info("Starting Infra Hub API...")
     DockerClient.initialize()
     logger.info("Docker client initialized")

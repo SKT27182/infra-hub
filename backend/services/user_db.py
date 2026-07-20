@@ -91,8 +91,9 @@ class UserService:
             )
             await conn.close()
             logger.info("User table ensured")
-        except Exception as e:
+        except Exception:
             logger.exception("Error creating user table")
+            raise
 
     async def ensure_default_admin_user(self) -> None:
         """Create or update the default admin user from env settings."""
@@ -118,8 +119,9 @@ class UserService:
             )
             await conn.close()
             logger.info("Default admin user ensured: %s", settings.admin_email)
-        except Exception as e:
+        except Exception:
             logger.exception("Error ensuring default admin user")
+            raise
 
     def _row_to_dict(self, row: asyncpg.Record) -> dict[str, Any]:
         data = dict(row)

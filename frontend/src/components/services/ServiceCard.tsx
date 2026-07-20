@@ -29,6 +29,7 @@ const serviceIcons: Record<string, string> = {
   qdrant: '🔷',
   minio: '📦',
   neo4j: '🕸️',
+  opensearch: '🔎',
 }
 
 interface ServiceCardProps {
@@ -49,6 +50,7 @@ export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
     if (info.databases) return `${(info.databases as any[]).length} Databases`
     if (info.buckets) return `${(info.buckets as any[]).length} Buckets`
     if (info.collections) return `${(info.collections as any[]).length} Collections`
+    if (info.indices) return `${(info.indices as any[]).length} Indices`
     if (typeof info.node_count === 'number') return `${String(info.node_count)} Nodes`
     if (info.labels) return `${(info.labels as any[]).length} Labels`
     if (typeof info.total_keys === 'number') return `${String(info.total_keys)} Keys`

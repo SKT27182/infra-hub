@@ -14,6 +14,7 @@ import {
   QdrantPage,
   MinIOPage,
   Neo4jPage,
+  OpenSearchPage,
   LoginPage,
   UsersPage,
   SettingsPage,
@@ -169,6 +170,17 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <Neo4jPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/services/opensearch"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <OpenSearchPage />
             </AppLayout>
           </ProtectedRoute>
         }

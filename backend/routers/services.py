@@ -7,6 +7,7 @@ from services.minio import MinIOService
 from services.mongodb import MongoDBService
 from services.qdrant import QdrantService
 from services.neo4j import Neo4jService
+from services.opensearch import OpenSearchService
 from config import settings
 from services.auth import get_current_user
 from utils.logger import create_logger
@@ -22,6 +23,7 @@ minio = MinIOService()
 mongodb = MongoDBService()
 qdrant = QdrantService()
 neo4j = Neo4jService()
+opensearch = OpenSearchService()
 
 SERVICES = {
     "postgres": postgres,
@@ -30,6 +32,7 @@ SERVICES = {
     "mongodb": mongodb,
     "qdrant": qdrant,
     "neo4j": neo4j,
+    "opensearch": opensearch,
 }
 
 
@@ -170,6 +173,11 @@ async def query_neo4j(payload: GenericActionQueryRequest):
     return await neo4j.query(payload.action, payload.params)
 
 
+@router.post("/opensearch/query")
+async def query_opensearch(payload: GenericActionQueryRequest):
+    return await opensearch.query(payload.action, payload.params)
+
+
 @router.post("/minio/buckets/{bucket_name}")
 async def create_minio_bucket(bucket_name: str):
     return {"success": await minio.create_bucket(bucket_name)}
@@ -188,3 +196,8 @@ async def drop_mongodb_db(db_name: str):
 @router.delete("/qdrant/collections/{name}")
 async def delete_qdrant_coll(name: str):
     return {"success": await qdrant.delete_collection(name)}
+
+
+@router.delete("/opensearch/indices/{name}")
+async def delete_opensearch_index(name: str):
+    return {"success": await opensearch.delete_index(name)}
