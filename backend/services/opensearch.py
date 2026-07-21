@@ -2,12 +2,16 @@
 OpenSearch service implementation (full-text, autocomplete, k-NN).
 """
 
+import asyncio
+import json
+import math
 from typing import Any
 
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
 from config import settings
 from utils.logger import create_logger
+
 from .admin_access import admin_access_block
 from .base import BaseService
 
@@ -38,20 +42,27 @@ class OpenSearchService(BaseService):
             verify_certs=False,
             ssl_show_warn=False,
             connection_class=RequestsHttpConnection,
-            timeout=30,
+            timeout=settings.service_request_timeout_seconds,
         )
 
     async def get_info(self) -> dict[str, Any]:
         """Get cluster health, indices, and connection details."""
         try:
             client = self._get_client()
-            health = client.cluster.health()
-            indices_raw = client.cat.indices(format="json", h="index,docs.count,store.size,health,status")
+            health = await asyncio.to_thread(client.cluster.health)
+            indices_raw = await asyncio.to_thread(
+                client.cat.indices,
+                format="json",
+                h="index,docs.count,store.size,health,status",
+            )
             indices: list[dict[str, Any]] = []
-            for row in indices_raw or []:
+            visible_rows = [
+                row
+                for row in (indices_raw or [])
+                if not str(row.get("index", "")).startswith(".")
+            ]
+            for row in visible_rows[:500]:
                 name = str(row.get("index", ""))
-                if name.startswith("."):
-                    continue
                 indices.append(
                     {
                         "name": name,
@@ -88,23 +99,24 @@ class OpenSearchService(BaseService):
                 },
                 "indices": indices,
                 "total_indices": len(indices),
+                "indices_truncated": len(visible_rows) > 500,
             }
         except Exception as e:
-            logger.warning("OpenSearch get_info failed: %s", e)
-            return {"error": str(e), "status": self.get_status().model_dump()}
+            logger.warning("OpenSearch get_info failed (%s)", type(e).__name__)
+            return {"error": "OpenSearch information is unavailable", "status": self.get_status().model_dump()}
 
     async def delete_index(self, name: str) -> bool:
         """Delete an index by name."""
         try:
             client = self._get_client()
-            if not client.indices.exists(index=name):
+            if not await asyncio.to_thread(client.indices.exists, index=name):
                 client.close()
                 return False
-            client.indices.delete(index=name)
+            await asyncio.to_thread(client.indices.delete, index=name)
             client.close()
             return True
         except Exception as e:
-            logger.error("OpenSearch delete_index failed name=%s: %s", name, e)
+            logger.error("OpenSearch delete_index failed name=%s type=%s", name, type(e).__name__)
             return False
 
     def _clamp_size(self, value: Any, default: int = _DEFAULT_SEARCH_SIZE) -> int:
@@ -123,11 +135,18 @@ class OpenSearchService(BaseService):
 
         try:
             if action == "cluster_health":
-                return {"success": True, "result": client.cluster.health()}
+                return {
+                    "success": True,
+                    "result": await asyncio.to_thread(client.cluster.health),
+                }
 
             if action == "list_indices":
-                rows = client.cat.indices(format="json", h="index,docs.count,store.size,health,status")
-                indices = [
+                rows = await asyncio.to_thread(
+                    client.cat.indices,
+                    format="json",
+                    h="index,docs.count,store.size,health,status",
+                )
+                all_indices = [
                     {
                         "name": row.get("index"),
                         "docs_count": int(row.get("docs.count") or 0),
@@ -138,17 +157,23 @@ class OpenSearchService(BaseService):
                     for row in (rows or [])
                     if not str(row.get("index", "")).startswith(".")
                 ]
-                return {"success": True, "result": indices, "count": len(indices)}
+                indices = all_indices[:500]
+                return {
+                    "success": True,
+                    "result": indices,
+                    "count": len(indices),
+                    "truncated": len(all_indices) > 500,
+                }
 
             index = str(payload.get("index") or "").strip()
             if action in {"index_info", "search", "knn_search", "suggest", "delete_index"} and not index:
                 return {"success": False, "error": "index is required"}
 
             if action == "index_info":
-                if not client.indices.exists(index=index):
+                if not await asyncio.to_thread(client.indices.exists, index=index):
                     return {"success": False, "error": f"Index not found: {index}"}
-                stats = client.indices.stats(index=index)
-                mapping = client.indices.get_mapping(index=index)
+                stats = await asyncio.to_thread(client.indices.stats, index=index)
+                mapping = await asyncio.to_thread(client.indices.get_mapping, index=index)
                 return {
                     "success": True,
                     "result": {
@@ -162,7 +187,10 @@ class OpenSearchService(BaseService):
                 size = self._clamp_size(payload.get("size"))
                 body = payload.get("body")
                 if isinstance(body, dict):
-                    response = client.search(index=index, body=body)
+                    if len(json.dumps(body).encode("utf-8")) > 256 * 1024:
+                        return {"success": False, "error": "Query DSL body exceeds 256 KiB"}
+                    body = {**body, "size": self._clamp_size(body.get("size"))}
+                    response = await asyncio.to_thread(client.search, index=index, body=body)
                 else:
                     query_text = str(payload.get("query") or "").strip()
                     if not query_text:
@@ -171,7 +199,8 @@ class OpenSearchService(BaseService):
                             "error": "Provide body (Query DSL) or query (match_all / match text)",
                         }
                     field = str(payload.get("field") or "content")
-                    response = client.search(
+                    response = await asyncio.to_thread(
+                        client.search,
                         index=index,
                         body={
                             "size": size,
@@ -191,11 +220,22 @@ class OpenSearchService(BaseService):
 
             if action == "knn_search":
                 vector = payload.get("vector")
-                if not isinstance(vector, list) or not vector:
-                    return {"success": False, "error": "vector must be a non-empty array"}
+                if (
+                    not isinstance(vector, list)
+                    or not vector
+                    or len(vector) > 65_536
+                    or any(
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(value)
+                        for value in vector
+                    )
+                ):
+                    return {"success": False, "error": "vector must contain finite numbers and have at most 65536 dimensions"}
                 field = str(payload.get("field") or "embedding")
                 k = self._clamp_size(payload.get("k") or payload.get("size"), default=5)
-                response = client.search(
+                response = await asyncio.to_thread(
+                    client.search,
                     index=index,
                     body={
                         "size": k,
@@ -223,7 +263,8 @@ class OpenSearchService(BaseService):
                 size = self._clamp_size(payload.get("size"), default=5)
                 if not text:
                     return {"success": False, "error": "text is required for suggest"}
-                response = client.search(
+                response = await asyncio.to_thread(
+                    client.search,
                     index=index,
                     body={
                         "suggest": {
@@ -249,7 +290,7 @@ class OpenSearchService(BaseService):
 
             return {"success": False, "error": f"Unsupported action: {action}"}
         except Exception as e:
-            logger.error("OpenSearch query failed action=%s: %s", action, e)
-            return {"success": False, "error": str(e)}
+            logger.error("OpenSearch query failed action=%s type=%s", action, type(e).__name__)
+            return {"success": False, "error": "OpenSearch request failed"}
         finally:
             client.close()

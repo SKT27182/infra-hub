@@ -20,7 +20,7 @@ export function RedisPage() {
   const adminUrl = service?.admin_url || adminAccess?.url
 
   const copyEndpoint = () => {
-    const url = (info.connection as any)?.url || `redis://127.0.0.1:${service?.ports[0]?.split(':')[0] || '6379'}`
+    const url = (info.connection as { url?: string } | undefined)?.url || `redis://127.0.0.1:${service?.ports[0]?.split(':')[0] || '6379'}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -67,7 +67,7 @@ export function RedisPage() {
           {(info.connection || (service && service.ports.length > 0)) && (
             <div className="mt-2 flex items-center gap-2">
               <code className="rounded bg-muted px-2 py-1 text-xs">
-                {(info.connection as any)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
+                {(info.connection as { url?: string } | undefined)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
               </code>
               <Button
                 variant="ghost"
@@ -120,8 +120,8 @@ export function RedisPage() {
               <MemoryStick className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{String((info.memory as any)?.used ?? '—')}</div>
-              <p className="text-xs text-muted-foreground">Peak: {String((info.memory as any)?.peak ?? '—')}</p>
+              <div className="text-2xl font-bold">{String((info.memory as { used?: unknown } | undefined)?.used ?? '—')}</div>
+              <p className="text-xs text-muted-foreground">Peak: {String((info.memory as { peak?: unknown } | undefined)?.peak ?? '—')}</p>
             </CardContent>
           </Card>
 

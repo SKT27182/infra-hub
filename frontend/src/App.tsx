@@ -16,7 +16,6 @@ import {
   Neo4jPage,
   OpenSearchPage,
   LoginPage,
-  UsersPage,
   SettingsPage,
 } from '@/pages'
 
@@ -36,7 +35,6 @@ function AppRoutes() {
   const titles: Record<string, string> = {
     '/': 'Dashboard — Infra Hub',
     '/containers': 'Containers — Infra Hub',
-    '/users': 'Users — Infra Hub',
     '/settings': 'Settings — Infra Hub',
     '/login': 'Sign in — Infra Hub',
   }
@@ -71,17 +69,6 @@ function AppRoutes() {
           <ProtectedRoute>
             <AppLayout>
               <ContainersPage />
-            </AppLayout>
-          </ProtectedRoute>
-        }
-      />
-
-      <Route
-        path="/users"
-        element={
-          <ProtectedRoute>
-            <AppLayout>
-              <UsersPage />
             </AppLayout>
           </ProtectedRoute>
         }

@@ -3,7 +3,7 @@ Base service class - Abstract interface for all managed services.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -69,10 +69,7 @@ class BaseService(ABC):
 
         # Health is derived purely from Docker health check if present, else running status
         health_info = container.attrs.get("State", {}).get("Health", {})
-        if health_info:
-            healthy = health_info.get("Status") == "healthy"
-        else:
-            healthy = running
+        healthy = health_info.get("Status") == "healthy" if health_info else running
 
         if running and not healthy:
             logger.warning("Service %s running but unhealthy", self.name)
@@ -107,28 +104,38 @@ class BaseService(ABC):
         """
         pass
 
-    def start(self) -> bool:
-        """Start the service container."""
-        success = DockerClient.start_container(self.container_name)
-        # Also start admin container if configured
-        if success and self.admin_container:
-            DockerClient.start_container(self.admin_container)
-        return success
-
-    def stop(self) -> bool:
-        """Stop the service container."""
-        # Stop admin container first if configured
+    async def action(
+        self, action: Literal["start", "stop", "restart"]
+    ) -> list[dict[str, Any]]:
+        """Apply an action to the primary and optional admin container."""
+        targets = [self.container_name]
         if self.admin_container:
-            DockerClient.stop_container(self.admin_container)
-        return DockerClient.stop_container(self.container_name)
-
-    def restart(self) -> bool:
-        """Restart the service container."""
-        success = DockerClient.restart_container(self.container_name)
-        # Also restart admin container if configured
-        if success and self.admin_container:
-            DockerClient.restart_container(self.admin_container)
-        return success
+            if action == "stop":
+                targets.insert(0, self.admin_container)
+            else:
+                targets.append(self.admin_container)
+        results: list[dict[str, Any]] = []
+        failures: list[tuple[str, Exception]] = []
+        for target in targets:
+            try:
+                results.append(
+                    await DockerClient.perform_action(
+                        target, action, allow_already_target=True
+                    )
+                )
+            except (LookupError, RuntimeError, TimeoutError, ValueError) as exc:
+                failures.append((target, exc))
+        if failures:
+            names = ", ".join(target for target, _ in failures)
+            errors = [error for _, error in failures]
+            if all(isinstance(error, ValueError) for error in errors):
+                raise ValueError(f"Invalid container transition for: {names}")
+            if any(isinstance(error, TimeoutError) for error in errors):
+                raise TimeoutError(f"Container action timed out for: {names}")
+            if all(isinstance(error, LookupError) for error in errors):
+                raise LookupError(f"Infra Hub container not found: {names}")
+            raise RuntimeError(f"Container action failed for: {names}")
+        return results
 
     def get_logs(self, tail: int = 100) -> str:
         """Get service container logs."""

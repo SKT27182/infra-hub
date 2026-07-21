@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from config import settings
 from utils.logger import CustomFormatter
 from utils.logging_bridge import configure_third_party_loggers, sql_echo_enabled
@@ -18,7 +20,7 @@ def _console_handlers(logger: logging.Logger) -> list[logging.Handler]:
     ]
 
 
-def test_configure_third_party_uses_colored_formatter(monkeypatch) -> None:
+def test_configure_third_party_uses_colored_formatter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "log_level", "INFO")
 
     for name in ("sqlalchemy.engine", "uvicorn", "uvicorn.access"):
@@ -49,6 +51,6 @@ def test_configure_third_party_uses_colored_formatter(monkeypatch) -> None:
     assert error.propagate is True
 
 
-def test_log_level_debug_enables_sql_echo(monkeypatch) -> None:
+def test_log_level_debug_enables_sql_echo(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "log_level", "DEBUG")
     assert sql_echo_enabled() is True

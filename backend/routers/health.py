@@ -1,4 +1,7 @@
-from fastapi import APIRouter, Depends
+import asyncio
+from typing import Any, Literal
+
+from fastapi import APIRouter, Depends, HTTPException
 
 from config import settings
 from infra_docker import DockerClient
@@ -11,10 +14,10 @@ router = APIRouter(dependencies=[Depends(get_current_user)])
 
 
 @router.get("/health")
-async def check_all_health():
-    """Check health of all containers starting with 'infra-'."""
-    containers = DockerClient.list_containers(all=True)
-    infra_containers = [c for c in containers if c.name.startswith("infra-")]
+async def check_all_health() -> dict[str, Any]:
+    """Check health of all registered Infra Hub containers."""
+    containers = await asyncio.to_thread(DockerClient.list_containers, all=True)
+    infra_containers = containers
 
     results = []
     for container in infra_containers:
@@ -44,9 +47,9 @@ async def check_all_health():
 
 
 @router.get("/containers")
-async def list_containers(all: bool = True):
+async def list_containers(all: bool = True) -> list[dict[str, Any]]:
     """List all Docker containers."""
-    containers = DockerClient.list_containers(all=all)
+    containers = await asyncio.to_thread(DockerClient.list_containers, all=all)
     return [
         {
             "id": c.short_id,
@@ -56,29 +59,55 @@ async def list_containers(all: bool = True):
             "state": c.attrs.get("State", {}).get("Status", "unknown"),
             "created": c.attrs.get("Created"),
             "ports": list(c.attrs.get("NetworkSettings", {}).get("Ports", {}).keys()),
-            "labels": c.labels,
+            "labels": {
+                key: value
+                for key, value in c.labels.items()
+                if key in {"com.docker.compose.project", "com.docker.compose.service"}
+            },
         }
         for c in containers
     ]
 
 
 @router.get("/containers/infra")
-async def list_infra_containers():
+async def list_infra_containers() -> list[dict[str, Any]]:
     """List only infra containers."""
     containers = await list_containers(all=True)
-    return [c for c in containers if c["name"].startswith("infra-")]
+    return containers
 
 
 @router.post("/containers/{id}/start")
-async def start_container(id: str):
-    return {"success": DockerClient.start_container(id)}
+async def start_container(id: str) -> dict[str, Any]:
+    return await _container_action(id, "start")
 
 
 @router.post("/containers/{id}/stop")
-async def stop_container(id: str):
-    return {"success": DockerClient.stop_container(id)}
+async def stop_container(id: str) -> dict[str, Any]:
+    return await _container_action(id, "stop")
 
 
 @router.post("/containers/{id}/restart")
-async def restart_container(id: str):
-    return {"success": DockerClient.restart_container(id)}
+async def restart_container(id: str) -> dict[str, Any]:
+    return await _container_action(id, "restart")
+
+
+async def _container_action(
+    container_id: str, action: Literal["start", "stop", "restart"]
+) -> dict[str, Any]:
+    try:
+        result = await DockerClient.perform_action(container_id, action)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "success": True,
+        "action": action,
+        "service": DockerClient.service_name_for_container(result["name"]),
+        "containers": [result],
+        "message": f"Container {action} completed",
+    }

@@ -2,12 +2,15 @@
 Qdrant vector database service implementation.
 """
 
+import asyncio
+import math
 from typing import Any
 
 from qdrant_client import QdrantClient
 
 from config import settings
 from utils.logger import create_logger
+
 from .admin_access import admin_access_block
 from .base import BaseService
 
@@ -28,25 +31,26 @@ class QdrantService(BaseService):
             port=settings.qdrant_port,
             api_key=settings.qdrant_api_key,
             https=False,
+            timeout=int(settings.service_request_timeout_seconds),
         )
 
     async def get_info(self) -> dict[str, Any]:
         """Get minimal but complete Qdrant information."""
         try:
             client = self._get_client()
-            response = client.get_collections()
+            response = await asyncio.to_thread(client.get_collections)
             details = []
-            for coll in response.collections:
+            for coll in response.collections[:500]:
                 try:
-                    info = client.get_collection(coll.name)
+                    info = await asyncio.to_thread(client.get_collection, coll.name)
                     details.append(
                         {
                             "name": coll.name,
-                            "vectors": info.vectors_count,
+                            "indexed_vectors": info.indexed_vectors_count,
                             "points": info.points_count,
                         }
                     )
-                except:
+                except (RuntimeError, ValueError, TypeError):
                     details.append(
                         {"name": coll.name, "error": "Could not get details"}
                     )
@@ -72,16 +76,17 @@ class QdrantService(BaseService):
                 },
                 "collections": details,
                 "total_collections": len(details),
+                "collections_truncated": len(response.collections) > 500,
             }
         except Exception as e:
-            logger.warning("Qdrant get_info failed: %s", e)
-            return {"error": str(e), "status": self.get_status().model_dump()}
+            logger.warning("Qdrant get_info failed (%s)", type(e).__name__)
+            return {"error": "Qdrant information is unavailable", "status": self.get_status().model_dump()}
 
     async def delete_collection(self, name: str) -> bool:
         """Delete a collection."""
         try:
             client = self._get_client()
-            client.delete_collection(name)
+            await asyncio.to_thread(client.delete_collection, name)
             client.close()
             return True
         except Exception:
@@ -96,10 +101,11 @@ class QdrantService(BaseService):
 
         try:
             if action == "list_collections":
-                response = client.get_collections()
+                response = await asyncio.to_thread(client.get_collections)
                 return {
                     "success": True,
-                    "result": [collection.name for collection in response.collections],
+                    "result": [collection.name for collection in response.collections[:500]],
+                    "truncated": len(response.collections) > 500,
                 }
 
             collection = str(payload.get("collection") or "").strip()
@@ -107,22 +113,23 @@ class QdrantService(BaseService):
                 return {"success": False, "error": "collection is required"}
 
             if action == "collection_info":
-                info = client.get_collection(collection)
+                info = await asyncio.to_thread(client.get_collection, collection)
                 return {
                     "success": True,
                     "result": {
                         "name": collection,
                         "status": info.status.value if info.status else None,
                         "points_count": info.points_count,
-                        "vectors_count": info.vectors_count,
+                        "indexed_vectors_count": info.indexed_vectors_count,
                     },
                 }
 
             if action == "scroll":
-                limit = int(payload.get("limit", 10))
+                limit = max(1, min(int(payload.get("limit", 10)), 100))
                 with_payload = bool(payload.get("with_payload", True))
                 with_vectors = bool(payload.get("with_vectors", False))
-                points, next_page_offset = client.scroll(
+                points, next_page_offset = await asyncio.to_thread(
+                    client.scroll,
                     collection_name=collection,
                     limit=limit,
                     with_payload=with_payload,
@@ -146,19 +153,32 @@ class QdrantService(BaseService):
 
             if action == "search":
                 vector = payload.get("vector")
-                if not isinstance(vector, list) or not vector:
+                if (
+                    not isinstance(vector, list)
+                    or not vector
+                    or len(vector) > 65_536
+                    or any(
+                        isinstance(value, bool)
+                        or not isinstance(value, (int, float))
+                        or not math.isfinite(value)
+                        for value in vector
+                    )
+                ):
                     return {
                         "success": False,
-                        "error": "vector must be a non-empty array",
+                        "error": "vector must contain finite numbers and have at most 65536 dimensions",
                     }
-                limit = int(payload.get("limit", 5))
+                limit = max(1, min(int(payload.get("limit", 5)), 100))
                 with_payload = bool(payload.get("with_payload", True))
-                results = client.search(
-                    collection_name=collection,
-                    query_vector=vector,
-                    limit=limit,
-                    with_payload=with_payload,
+                query_response: Any = await asyncio.to_thread(
+                    lambda: client.query_points(
+                        collection_name=collection,
+                        query=vector,
+                        limit=limit,
+                        with_payload=with_payload,
+                    )
                 )
+                results = query_response.points
                 return {
                     "success": True,
                     "count": len(results),
@@ -174,7 +194,7 @@ class QdrantService(BaseService):
 
             return {"success": False, "error": f"Unsupported action: {action}"}
         except Exception as e:
-            logger.error("Qdrant query failed action=%s: %s", action, e)
-            return {"success": False, "error": str(e)}
+            logger.error("Qdrant query failed action=%s type=%s", action, type(e).__name__)
+            return {"success": False, "error": "Qdrant request failed"}
         finally:
             client.close()

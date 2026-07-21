@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { AdminAccessCard, type AdminAccess } from '@/components/services/AdminAccessCard'
 import { useService, useOpenSearchIndices, useOpenSearchActions, useServiceInfo } from '@/hooks'
 import { opensearchQuery, type ServiceQueryResponse } from '@/lib/api'
+import { confirmResourceDeletion } from '@/lib/confirm-resource'
 import {
   DEFAULT_OPENSEARCH_QUERY,
   OPENSEARCH_QUERY_HINT,
@@ -90,6 +91,7 @@ export function OpenSearchPage() {
       </div>
 
       <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      {dropIndex.error && <p className="text-sm text-destructive" role="alert">{dropIndex.error.message}</p>}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
@@ -165,7 +167,7 @@ export function OpenSearchPage() {
                       size="icon"
                       className="text-destructive hover:bg-destructive/10"
                       onClick={() => {
-                        if (confirm(`Delete index "${String(idx.name)}"?`)) {
+                        if (confirmResourceDeletion('index', String(idx.name))) {
                           dropIndex.mutate(String(idx.name))
                         }
                       }}

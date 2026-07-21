@@ -10,6 +10,7 @@ import {
   DEFAULT_POSTGRES_QUERY,
   POSTGRES_QUERY_HINT,
 } from '@/lib/service-default-queries'
+import { confirmResourceDeletion } from '@/lib/confirm-resource'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -42,7 +43,7 @@ export function PostgresPage() {
   }, [databaseNames, selectedDb])
 
   const copyEndpoint = () => {
-    const url = (info.connection as any)?.url || `postgresql://127.0.0.1:${service?.ports[0]?.split(':')[0] || '5432'}`
+    const url = (info.connection as { url?: string } | undefined)?.url || `postgresql://127.0.0.1:${service?.ports[0]?.split(':')[0] || '5432'}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -51,6 +52,10 @@ export function PostgresPage() {
   const runQuery = async () => {
     const sql = query.trim()
     if (!sql) return
+    if (/^(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE)\b/i.test(sql) &&
+        !window.confirm('This privileged query can change or delete database data. Continue?')) {
+      return
+    }
 
     setQueryRunning(true)
     try {
@@ -78,7 +83,7 @@ export function PostgresPage() {
           {(info.connection || (service && service.ports.length > 0)) && (
             <div className="mt-2 flex items-center gap-2">
               <code className="rounded bg-muted px-2 py-1 text-xs">
-                {(info.connection as any)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
+                {(info.connection as { url?: string } | undefined)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
               </code>
               <Button
                 variant="ghost"
@@ -107,6 +112,7 @@ export function PostgresPage() {
       </div>
 
       <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      {dropDB.error && <p className="text-sm text-destructive" role="alert">{dropDB.error.message}</p>}
 
       {/* Stats Summary */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -172,7 +178,7 @@ export function PostgresPage() {
                       size="icon"
                       className="text-destructive hover:bg-destructive/10"
                       onClick={() => {
-                        if (confirm(`Are you sure you want to delete database "${db.name}"?`)) {
+                        if (confirmResourceDeletion('database', String(db.name))) {
                           dropDB.mutate(String(db.name))
                         }
                       }}
@@ -222,7 +228,7 @@ export function PostgresPage() {
             className="min-h-28 w-full rounded-md border bg-background p-3 font-mono text-sm"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Write a read-only SQL query"
+            placeholder="Write a privileged admin SQL query"
           />
           <p className="text-xs text-muted-foreground">{POSTGRES_QUERY_HINT}</p>
 

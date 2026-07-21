@@ -3,22 +3,18 @@ Neo4j graph database service implementation.
 """
 
 import asyncio
-import re
 from typing import Any
 
-from neo4j import AsyncGraphDatabase, AsyncDriver
+from neo4j import AsyncDriver, AsyncGraphDatabase
 
 from config import settings
 from utils.logger import create_logger
+
 from .admin_access import admin_access_block
 from .base import BaseService
 
 logger = create_logger(__name__, level=settings.log_level)
 
-_WRITE_PATTERN = re.compile(
-    r"\b(CREATE|MERGE|DELETE|DETACH|SET|DROP|REMOVE|FOREACH|LOAD\s+CSV)\b",
-    re.IGNORECASE,
-)
 _DEFAULT_ROW_LIMIT = 100
 _MAX_ROW_LIMIT = 500
 _QUERY_TIMEOUT_SECONDS = 10.0
@@ -39,6 +35,7 @@ class Neo4jService(BaseService):
         return AsyncGraphDatabase.driver(
             self._bolt_uri(),
             auth=(settings.neo4j_user, settings.neo4j_password),
+            connection_timeout=settings.service_request_timeout_seconds,
         )
 
     async def _close_driver(self, driver: AsyncDriver) -> None:
@@ -54,9 +51,13 @@ class Neo4jService(BaseService):
             relationship_count = 0
 
             async with driver.session() as session:
-                label_rows = await session.run("CALL db.labels()")
+                label_rows = await session.run(
+                    "CALL db.labels() YIELD label RETURN label LIMIT 500"
+                )
                 labels = [str(record["label"]) async for record in label_rows]
-                rel_rows = await session.run("CALL db.relationshipTypes()")
+                rel_rows = await session.run(
+                    "CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType LIMIT 500"
+                )
                 relationship_types = [
                     str(record["relationshipType"]) async for record in rel_rows
                 ]
@@ -93,30 +94,22 @@ class Neo4jService(BaseService):
                 "relationship_count": relationship_count,
             }
         except Exception as e:
-            logger.warning("Neo4j get_info failed: %s", e)
-            return {"error": str(e), "status": self.get_status().model_dump()}
+            logger.warning("Neo4j get_info failed (%s)", type(e).__name__)
+            return {"error": "Neo4j information is unavailable", "status": self.get_status().model_dump()}
         finally:
             await self._close_driver(driver)
 
-    def _validate_readonly_cypher(self, cypher: str) -> str | None:
-        query = cypher.strip()
-        if not query:
-            return "Query cannot be empty"
-        if ";" in query.rstrip(";"):
-            return "Only a single Cypher statement is allowed"
-        if _WRITE_PATTERN.search(query):
-            return "Only read-only Cypher is allowed (MATCH/RETURN/WITH/CALL db.labels, etc.)"
-        return None
-
-    async def _run_readonly(
+    async def _run_cypher(
         self,
         cypher: str,
         params: dict[str, Any],
         limit: int,
     ) -> dict[str, Any]:
-        error = self._validate_readonly_cypher(cypher)
-        if error:
-            return {"success": False, "error": error}
+        query = cypher.strip()
+        if not query:
+            return {"success": False, "error": "Query cannot be empty"}
+        if ";" in query.rstrip(";"):
+            return {"success": False, "error": "Only one statement is allowed"}
 
         row_limit = min(max(limit, 1), _MAX_ROW_LIMIT)
         driver = self._driver()
@@ -127,27 +120,28 @@ class Neo4jService(BaseService):
             rows: list[dict[str, Any]] = []
             async for record in result:
                 rows.append(record.data())
-                if len(rows) >= row_limit:
+                if len(rows) > row_limit:
                     break
             return list(columns), rows
 
         try:
             async with driver.session() as session:
                 columns, rows = await asyncio.wait_for(
-                    session.execute_read(_fetch),
+                    session.execute_write(_fetch),
                     timeout=_QUERY_TIMEOUT_SECONDS,
                 )
             return {
                 "success": True,
                 "columns": columns,
-                "result": rows,
-                "count": len(rows),
+                "result": rows[:row_limit],
+                "count": min(len(rows), row_limit),
+                "truncated": len(rows) > row_limit,
             }
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return {"success": False, "error": "Query timed out"}
         except Exception as e:
-            logger.error("Neo4j query failed: %s", e)
-            return {"success": False, "error": str(e)}
+            logger.error("Neo4j query failed type=%s", type(e).__name__)
+            return {"success": False, "error": "Neo4j query failed"}
         finally:
             await self._close_driver(driver)
 
@@ -156,9 +150,10 @@ class Neo4jService(BaseService):
     ) -> dict[str, Any]:
         """Execute Neo4j query actions."""
         payload = params or {}
-        driver = self._driver()
+        driver: AsyncDriver | None = self._driver()
 
         try:
+            assert driver is not None
             if action == "list_labels":
                 async with driver.session() as session:
                     result = await session.run("CALL db.labels()")
@@ -179,12 +174,13 @@ class Neo4jService(BaseService):
                         UNWIND labels(n) AS label
                         RETURN label, count(*) AS count
                         ORDER BY count DESC
+                        LIMIT 500
                         """
                     )
                     rows = [record.data() async for record in result]
                 return {"success": True, "result": rows, "count": len(rows)}
 
-            if action == "run_readonly_cypher":
+            if action == "run_cypher":
                 cypher = str(payload.get("cypher") or "").strip()
                 limit = int(payload.get("limit") or _DEFAULT_ROW_LIMIT)
                 query_params = payload.get("params") or {}
@@ -192,12 +188,12 @@ class Neo4jService(BaseService):
                     return {"success": False, "error": "params must be an object"}
                 await self._close_driver(driver)
                 driver = None
-                return await self._run_readonly(cypher, query_params, limit)
+                return await self._run_cypher(cypher, query_params, limit)
 
             return {"success": False, "error": f"Unknown action: {action}"}
         except Exception as e:
-            logger.error("Neo4j action %s failed: %s", action, e)
-            return {"success": False, "error": str(e)}
+            logger.error("Neo4j action failed action=%s type=%s", action, type(e).__name__)
+            return {"success": False, "error": "Neo4j request failed"}
         finally:
             if driver is not None:
                 await self._close_driver(driver)

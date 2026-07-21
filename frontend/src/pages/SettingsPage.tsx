@@ -70,8 +70,8 @@ export function SettingsPage() {
       setPasswordError('Passwords do not match')
       return
     }
-    if (newPassword.length < 8) {
-      setPasswordError('Password must be at least 8 characters')
+    if (newPassword.length < 12) {
+      setPasswordError('Password must be at least 12 characters')
       return
     }
     setSavingPassword(true)
@@ -80,7 +80,8 @@ export function SettingsPage() {
       setCurrentPassword('')
       setNewPassword('')
       setConfirmPassword('')
-      setPasswordSuccess('Password updated')
+      await logout()
+      navigate('/login')
     } catch (err: unknown) {
       setPasswordError(err instanceof Error ? err.message : 'Failed to update password')
     } finally {
@@ -88,8 +89,8 @@ export function SettingsPage() {
     }
   }
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     navigate('/login')
   }
 
@@ -142,9 +143,7 @@ export function SettingsPage() {
                     </div>
                     <div>
                       <p className="font-medium">{userDisplayName(user)}</p>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {user?.role?.toLowerCase()} account
-                      </p>
+                      <p className="text-sm text-muted-foreground">Infrastructure administrator</p>
                     </div>
                   </div>
 
@@ -243,7 +242,7 @@ export function SettingsPage() {
                   <CardDescription>Irreversible actions</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Button variant="destructive" onClick={handleLogout}>
+                  <Button variant="destructive" onClick={() => void handleLogout()}>
                     Sign out
                   </Button>
                 </CardContent>

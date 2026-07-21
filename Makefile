@@ -30,6 +30,8 @@ export LOG_PATH := $(LOG_PATH)
 DOCKER_COMPOSE := docker compose --env-file $(BACKEND_ENV_FILE)
 APP_HOST_RAW := $(shell awk -F= '/^SERVICE_PUBLIC_HOST=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(BACKEND_ENV_FILE) 2>/dev/null)
 APP_HOST := $(if $(APP_HOST_RAW),$(APP_HOST_RAW),127.0.0.1)
+API_BIND_HOST_RAW := $(shell awk -F= '/^API_HOST=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(BACKEND_ENV_FILE) 2>/dev/null)
+API_BIND_HOST := $(if $(API_BIND_HOST_RAW),$(API_BIND_HOST_RAW),127.0.0.1)
 BACKEND_PORT_RAW := $(shell awk -F= '/^API_PORT=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(BACKEND_ENV_FILE) 2>/dev/null)
 BACKEND_PORT := $(if $(BACKEND_PORT_RAW),$(BACKEND_PORT_RAW),8888)
 FRONTEND_PORT_RAW := $(shell awk -F= '/^VITE_PORT=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(FRONTEND_ENV_FILE) 2>/dev/null)
@@ -128,7 +130,7 @@ dev-local: install prepare-logs up
 		}; \
 		trap '"'"'kill $$backend_pid $$frontend_pid 2>/dev/null || true; rm -f "$(BACKEND_PID)" "$(FRONTEND_PID)"'"'"' INT TERM EXIT; \
 		( setup_log_pipe "$(BACKEND_LOG)"; cd backend && \
-		  .venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port "$(BACKEND_PORT)" \
+		  .venv/bin/python -m uvicorn main:app --reload --host "$(API_BIND_HOST)" --port "$(BACKEND_PORT)" \
 		) & backend_pid=$$!; echo $$backend_pid > "$(BACKEND_PID)"; \
 		( setup_log_pipe "$(FRONTEND_LOG)"; cd frontend && pnpm dev ) & frontend_pid=$$!; echo $$frontend_pid > "$(FRONTEND_PID)"; \
 		wait $$backend_pid $$frontend_pid'
@@ -253,6 +255,7 @@ clean-all: clean
 
 # Tears down shared infra (Redis, MinIO, Postgres, …). Other apps may depend on these.
 clean-hard: stop-local
+	cd backend && .venv/bin/python -m scripts.validate_cleanup_target "$(PERSIST_DIR)"
 	rm -rf "$(LOG_DIR)"
 	$(DOCKER_COMPOSE) down --volumes --remove-orphans --rmi local
 	rm -rf "$(PERSIST_DIR)"

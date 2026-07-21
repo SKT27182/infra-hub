@@ -1,20 +1,29 @@
-export const API_BASE = '/api'
+export const API_BASE = '/api/v2'
+
+export interface ApiErrorBody {
+  error?: { code?: string; message?: string; request_id?: string }
+  detail?: string | { msg?: string }[]
+}
 
 async function fetchWithAuth(url: string, options: RequestInit = {}) {
-  const token = localStorage.getItem('auth_token')
-  const headers = {
-    ...options.headers,
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  }
-
-  const response = await fetch(url, { ...options, headers })
+  const response = await fetch(url, { ...options, credentials: 'include' })
 
   if (response.status === 401) {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('auth_user')
     if (window.location.pathname !== '/login') {
       window.location.href = '/login'
     }
+  }
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as ApiErrorBody
+    const validation = Array.isArray(body.detail)
+      ? body.detail.map((item) => item.msg).filter(Boolean).join(', ')
+      : undefined
+    throw new Error(
+      body.error?.message || validation ||
+        (typeof body.detail === 'string' ? body.detail : undefined) ||
+        `Request failed (${response.status})`
+    )
   }
 
   return response
@@ -56,6 +65,8 @@ export interface PostgresQueryResponse {
   row_count?: number
   columns?: string[]
   rows?: Record<string, unknown>[]
+  command?: string | null
+  truncated?: boolean
   error?: string
 }
 
@@ -80,8 +91,15 @@ export interface ContainerInfo {
 
 export interface ServiceAction {
   success: boolean
+  action: 'start' | 'stop' | 'restart'
   message: string
   service: string
+  containers: Array<{
+    name: string
+    state: string
+    healthy: boolean
+    health: string
+  }>
 }
 
 // Health endpoints
@@ -260,7 +278,6 @@ export interface InfraUser {
   id: number
   email: string
   name: string
-  role: string
   is_active: boolean
   created_at: string
   updated_at: string
@@ -268,11 +285,20 @@ export interface InfraUser {
 
 export async function getMe(): Promise<InfraUser> {
   const res = await fetchWithAuth(`${API_BASE}/auth/me`)
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail || 'Failed to load profile')
-  }
   return res.json()
+}
+
+export async function loginUser(email: string, password: string): Promise<InfraUser> {
+  const res = await fetchWithAuth(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+  return res.json()
+}
+
+export async function logoutUser(): Promise<void> {
+  await fetchWithAuth(`${API_BASE}/auth/logout`, { method: 'POST' })
 }
 
 export async function updateProfile(name: string): Promise<InfraUser> {
@@ -281,10 +307,6 @@ export async function updateProfile(name: string): Promise<InfraUser> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail || 'Failed to update profile')
-  }
   return res.json()
 }
 
@@ -292,7 +314,7 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/auth/me/password`, {
+  await fetchWithAuth(`${API_BASE}/auth/me/password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -300,59 +322,4 @@ export async function changePassword(
       new_password: newPassword,
     }),
   })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail || 'Failed to change password')
-  }
-}
-
-export async function listUsers(): Promise<InfraUser[]> {
-  const res = await fetchWithAuth(`${API_BASE}/users`)
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail || 'Failed to list users')
-  }
-  return res.json()
-}
-
-export async function createUser(data: {
-  email: string
-  password: string
-  name?: string
-  role?: string
-}): Promise<InfraUser> {
-  const res = await fetchWithAuth(`${API_BASE}/users`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail || 'Failed to create user')
-  }
-  return res.json()
-}
-
-export async function updateUser(
-  id: number,
-  data: { name?: string; password?: string; role?: string; is_active?: boolean }
-): Promise<InfraUser> {
-  const res = await fetchWithAuth(`${API_BASE}/users/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail || 'Failed to update user')
-  }
-  return res.json()
-}
-
-export async function deleteUser(id: number): Promise<void> {
-  const res = await fetchWithAuth(`${API_BASE}/users/${id}`, { method: 'DELETE' })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { detail?: string }).detail || 'Failed to delete user')
-  }
 }

@@ -5,12 +5,10 @@ import {
   Server,
   Container,
   LogOut,
-  Users,
   Settings,
   PanelLeftClose,
   PanelLeft,
 } from 'lucide-react'
-import { isSuperAdmin } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ThemeToggle } from './ThemeToggle'
@@ -23,15 +21,11 @@ interface NavItem {
   icon: ReactNode
 }
 
-function getMainNav(role?: string): NavItem[] {
-  const items: NavItem[] = [
+function getMainNav(): NavItem[] {
+  return [
     { title: 'Dashboard', href: '/', icon: <LayoutDashboard className="h-4 w-4 shrink-0" /> },
     { title: 'Containers', href: '/containers', icon: <Container className="h-4 w-4 shrink-0" /> },
   ]
-  if (isSuperAdmin(role)) {
-    items.push({ title: 'Users', href: '/users', icon: <Users className="h-4 w-4 shrink-0" /> })
-  }
-  return items
 }
 
 function NavLink({
@@ -129,7 +123,7 @@ export function Sidebar({
 
       <ScrollArea className="flex-1 px-2 py-4">
         <div className="space-y-1">
-          {getMainNav(user?.role).map((item) => (
+          {getMainNav().map((item) => (
             <NavLink
               key={item.href}
               item={item}
@@ -179,7 +173,7 @@ export function Sidebar({
               'text-muted-foreground hover:text-foreground',
               !collapsed && 'flex-1 justify-center gap-2'
             )}
-            onClick={logout}
+            onClick={() => void logout()}
             title={collapsed ? 'Logout' : undefined}
           >
             <LogOut className="h-4 w-4 shrink-0" />
@@ -190,7 +184,7 @@ export function Sidebar({
 
         {!collapsed && (
           <div className="text-[10px] text-center text-muted-foreground/50 pb-1">
-            Infra Hub v0.1.0
+            Infra Hub v2
           </div>
         )}
       </div>

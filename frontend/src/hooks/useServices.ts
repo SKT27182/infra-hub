@@ -69,6 +69,9 @@ export function useServiceActions(name: string) {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['services'] })
     queryClient.invalidateQueries({ queryKey: ['service', name] })
+    queryClient.invalidateQueries({ queryKey: ['service-info', name] })
+    queryClient.invalidateQueries({ queryKey: ['service-health', name] })
+    queryClient.invalidateQueries({ queryKey: ['containers'] })
   }
 
   const start = useMutation({

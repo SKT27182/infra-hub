@@ -13,7 +13,7 @@ export function usePostgresDatabases() {
     queryKey: ['postgres', 'databases'],
     queryFn: async () => {
       const { info } = await getServiceInfo('postgres')
-      return (info.databases as any[]) || []
+      return Array.isArray(info.databases) ? info.databases : []
     },
   })
 }
@@ -42,7 +42,7 @@ export function useMongoDBDatabases() {
     queryKey: ['mongodb', 'databases'],
     queryFn: async () => {
       const { info } = await getServiceInfo('mongodb')
-      return (info.databases as any[]) || []
+      return Array.isArray(info.databases) ? info.databases : []
     },
   })
 }
@@ -64,7 +64,7 @@ export function useQdrantCollections() {
     queryKey: ['qdrant', 'collections'],
     queryFn: async () => {
       const { info } = await getServiceInfo('qdrant')
-      return (info.collections as any[]) || []
+      return Array.isArray(info.collections) ? info.collections : []
     },
   })
 }
@@ -86,7 +86,7 @@ export function useMinioBuckets() {
     queryKey: ['minio', 'buckets'],
     queryFn: async () => {
       const { info } = await getServiceInfo('minio')
-      return (info.buckets as any[]) || []
+      return Array.isArray(info.buckets) ? info.buckets : []
     },
   })
 }
@@ -124,7 +124,7 @@ export function useOpenSearchIndices() {
     queryKey: ['opensearch', 'indices'],
     queryFn: async () => {
       const { info } = await getServiceInfo('opensearch')
-      return (info.indices as any[]) || []
+      return Array.isArray(info.indices) ? info.indices : []
     },
   })
 }

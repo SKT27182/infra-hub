@@ -5,15 +5,30 @@ import { useInfraContainers } from '@/hooks'
 import { startContainer, stopContainer, restartContainer } from '@/lib/api'
 import { useQueryClient } from '@tanstack/react-query'
 import { Play, Square, RotateCcw } from 'lucide-react'
+import { useState } from 'react'
 
 export function ContainersPage() {
   const { data: containers, isLoading, error } = useInfraContainers()
   const queryClient = useQueryClient()
+  const [activeAction, setActiveAction] = useState<string | null>(null)
+  const [actionError, setActionError] = useState('')
 
   const handleAction = async (id: string, action: 'start' | 'stop' | 'restart') => {
     const actions = { start: startContainer, stop: stopContainer, restart: restartContainer }
-    await actions[action](id)
-    queryClient.invalidateQueries({ queryKey: ['containers'] })
+    setActiveAction(`${id}:${action}`)
+    setActionError('')
+    try {
+      await actions[action](id)
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['containers'] }),
+        queryClient.invalidateQueries({ queryKey: ['services'] }),
+        queryClient.invalidateQueries({ queryKey: ['service'] }),
+      ])
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : 'Container action failed')
+    } finally {
+      setActiveAction(null)
+    }
   }
 
   if (isLoading) {
@@ -42,6 +57,7 @@ export function ContainersPage() {
       </div>
 
       <div className="space-y-4">
+        {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
         {containers?.map((container) => (
           <Card key={container.id}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -67,6 +83,7 @@ export function ContainersPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => handleAction(container.id, 'start')}
+                      disabled={activeAction !== null}
                     >
                       <Play className="h-4 w-4" />
                     </Button>
@@ -76,6 +93,7 @@ export function ContainersPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => handleAction(container.id, 'stop')}
+                        disabled={activeAction !== null}
                       >
                         <Square className="h-4 w-4" />
                       </Button>
@@ -83,6 +101,7 @@ export function ContainersPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => handleAction(container.id, 'restart')}
+                        disabled={activeAction !== null}
                       >
                         <RotateCcw className="h-4 w-4" />
                       </Button>

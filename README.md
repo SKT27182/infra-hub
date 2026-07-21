@@ -8,7 +8,7 @@ Centralized infrastructure platform for running shared Docker services once and 
 - Exposes service/admin status and control via FastAPI backend
 - Provides a React dashboard frontend with env-driven admin URLs (no hardcoded `localhost`)
 - Keeps service URLs, container names, and ports environment-driven through `backend/config.py`
-- Uses frontend `/api` calls with Vite dev proxy (local) and Nginx reverse proxy (server)
+- Uses the breaking `/api/v2` interface exclusively; v1 routes do not exist
 
 ## Architecture
 
@@ -16,10 +16,10 @@ Centralized infrastructure platform for running shared Docker services once and 
 - **Backend**: FastAPI (`backend/`)
 - **Infra**: Docker Compose (`docker-compose.yml`)
 
-Frontend calls `'/api'` only:
+Frontend calls `'/api/v2'` only:
 
-- **Local dev**: Vite proxies `/api` to backend target from `VITE_DEV_API_TARGET`
-- **Deployment**: Nginx proxies `/api` to backend service
+- **Local dev**: Vite proxies `/api/v2` to the backend target from `VITE_DEV_API_TARGET`
+- **Deployment**: proxy `/api/v2` to the backend service
 
 ## Environment files
 
@@ -88,7 +88,7 @@ Default local values are controlled by env in `backend/.env`:
 |--------|-------------|
 | Frontend | `http://<SERVICE_PUBLIC_HOST>:<VITE_PORT>` |
 | Backend API | `http://<SERVICE_PUBLIC_HOST>:<API_PORT>` |
-| API docs | `http://<SERVICE_PUBLIC_HOST>:<API_PORT>/api/docs` |
+| API docs | `http://<SERVICE_PUBLIC_HOST>:<API_PORT>/api/v2/docs` |
 | Infra Hub login | `ADMIN_EMAIL` / `ADMIN_PASSWORD` in `backend/.env` |
 
 Admin UI links in the dashboard are built from `SERVICE_PUBLIC_HOST` and per-service port envs (see table below).
@@ -158,7 +158,7 @@ Service pages in the Infra Hub UI show an **Admin access** card with the same UR
 - **What**: Search engine for BM25 full-text, autocomplete/suggesters, aggregations/facets, and k-NN vectors. Keep Qdrant for dedicated vector workloads; use OpenSearch when you need search UX features.
 - **Admin**: OpenSearch Dashboards at `http://<SERVICE_PUBLIC_HOST>:<OPENSEARCH_DASHBOARDS_PORT>` (security plugin disabled locally).
 - **Connect**: `http://127.0.0.1:9200` (or `SERVICE_PUBLIC_HOST` + `OPENSEARCH_HTTP_PORT`) with `opensearch-py` / OpenSearch clients.
-- **Host note**: On Linux, OpenSearch may require `sudo sysctl -w vm.max_map_count=262144` (persist via `/etc/sysctl.conf`). Data uses the Docker named volume `opensearch_data` (not under `INFRA_PERSIST_DIR`) to avoid UID permission issues.
+- **Host note**: On Linux, OpenSearch may require `sudo sysctl -w vm.max_map_count=262144` (persist via `/etc/sysctl.conf`). Its data is bind-mounted at `INFRA_PERSIST_DIR/opensearch`.
 - **Workflow**: Create indices per app; run Query DSL / Dev Tools in Dashboards; use Infra Hub OpenSearch page for list/search/knn/suggest actions.
 
 ### MinIO (`infra-minio`, API `9000`, console `9001`)
@@ -173,7 +173,7 @@ Service pages in the Infra Hub UI show an **Admin access** card with the same UR
 - **What**: Property graph database for knowledge graphs and Graph RAG.
 - **Admin**: Neo4j Browser at `http://<SERVICE_PUBLIC_HOST>:<NEO4J_HTTP_PORT>`.
 - **Connect**: `bolt://<SERVICE_PUBLIC_HOST>:<NEO4J_BOLT_PORT>` with `NEO4J_USER` / `NEO4J_PASSWORD` from `.env`; FlexSearch Graph RAG uses the same values.
-- **Workflow**: Explore graphs interactively in Neo4j Browser; run read-only Cypher from the Infra Hub Neo4j page.
+- **Workflow**: Explore graphs interactively in Neo4j Browser; active administrators can run privileged Cypher from the Infra Hub Neo4j page.
 
 ### How services fit your stack
 
@@ -216,6 +216,8 @@ flowchart TB
 3. Docs/login auth needs PostgreSQL reachable.
 4. Backend returns `503` when the user database is unavailable (instead of misleading `401` loops).
 5. After `make clean-hard`, run `make up` then `make dev-local` so containers and local processes are fresh.
+6. All active database-provisioned users are equally privileged infrastructure administrators. There is no signup or user-management UI/API.
+7. Stop actions stop containers (including configured admin companions); they do not remove images or persistent data.
 
 ## Make commands
 
@@ -249,14 +251,14 @@ Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mon
 ### pgAdmin does not open or times out
 
 - Often caused by pgAdmin permission errors after `clean-hard` (container cannot write `/var/lib/pgadmin/sessions`)
-- Compose uses a **named volume** `pgadmin_data` and fixes ownership on startup
+- Compose uses the bind mount `INFRA_PERSIST_DIR/pgadmin` and fixes ownership on startup
 - Recreate: `docker compose --env-file backend/.env up -d pgadmin --force-recreate`
 - Login: `PGADMIN_EMAIL` / `PGADMIN_PASSWORD` from `backend/.env`
 - Direct URL: `http://127.0.0.1:5050` (or your `PGADMIN_PORT`)
 
 ### RedisInsight restart loop or empty UI
 
-- Compose uses a **named volume** `redisinsight_data` (not a bind mount under `INFRA_PERSIST_DIR`) to avoid host permission issues after `clean-hard`
+- Compose uses the bind mount `INFRA_PERSIST_DIR/redisinsight`
 - Health endpoint: `curl -sf http://127.0.0.1:5540/api/health/`
 - Open RedisInsight and use the preconfigured `infra-redis` connection
 
@@ -286,11 +288,12 @@ Per-service compose shortcuts: `make up-postgres`, `make up-redis`, `make up-mon
 Use one domain and proxy:
 
 - `/` → frontend
-- `/api` → backend
+- `/api/v2` → backend
 
-Set `SERVICE_PUBLIC_HOST` to your public hostname so admin URLs and MinIO redirects are correct. No frontend code changes are needed when moving from local to server because the frontend uses relative `/api`.
+Host-only mode intentionally rejects non-loopback binds. If a reverse proxy is used, keep the backend and services bound to loopback and proxy only the relative `/api/v2` interface.
 
 ## Further reading
 
 - Backend port/env reference: [`backend/README.md`](backend/README.md)
+- Breaking upgrade and recovery procedure: [`docs/V2_UPGRADE.md`](docs/V2_UPGRADE.md)
 - Original project vision (unchanged): [`infra-hub.md`](infra-hub.md)

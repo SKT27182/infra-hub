@@ -2,8 +2,6 @@
 
 from typing import Any
 
-from config import settings
-
 
 def admin_access_block(
     *,

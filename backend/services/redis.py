@@ -8,6 +8,7 @@ import redis.asyncio as redis
 
 from config import settings
 from utils.logger import create_logger
+
 from .admin_access import admin_access_block
 from .base import BaseService
 
@@ -29,18 +30,19 @@ class RedisService(BaseService):
             port=settings.redis_port,
             password=settings.redis_password,
             decode_responses=True,
+            socket_connect_timeout=settings.service_request_timeout_seconds,
+            socket_timeout=settings.service_request_timeout_seconds,
         )
 
     async def get_info(self) -> dict[str, Any]:
         """Get Redis information including memory, keys, and clients."""
+        client: redis.Redis | None = None
         try:
             client = self._get_client()
             mem = await client.info("memory")
             clients_info = await client.info("clients")
             server_info = await client.info("server")
             db_size = await client.dbsize()
-            await client.aclose()
-
             return {
                 "status": self.get_status().model_dump(),
                 "admin_access": admin_access_block(
@@ -67,19 +69,24 @@ class RedisService(BaseService):
                 "uptime_seconds": server_info.get("uptime_in_seconds", 0),
             }
         except Exception as e:
-            logger.warning("Redis get_info failed: %s", e)
-            return {"error": str(e), "status": self.get_status().model_dump()}
+            logger.warning("Redis get_info failed (%s)", type(e).__name__)
+            return {"error": "Redis information is unavailable", "status": self.get_status().model_dump()}
+        finally:
+            if client is not None:
+                await client.aclose()
 
     async def query(
         self, command: str, args: list[Any] | None = None
     ) -> dict[str, Any]:
         """Execute an arbitrary Redis command."""
+        client: redis.Redis | None = None
         try:
             client = self._get_client()
-            result = await client.execute_command(command, *(args or []))
-            await client.aclose()
-
+            result = await client.execute_command(command, *(args or []))  # type: ignore[no-untyped-call]
             return {"success": True, "result": result}
         except Exception as e:
-            logger.error("Redis command failed: %s %s", command, e)
-            return {"success": False, "error": str(e)}
+            logger.error("Redis command failed command=%s type=%s", command, type(e).__name__)
+            return {"success": False, "error": "Redis command failed"}
+        finally:
+            if client is not None:
+                await client.aclose()

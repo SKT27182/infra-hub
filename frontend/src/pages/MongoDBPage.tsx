@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { AdminAccessCard, type AdminAccess } from '@/components/services/AdminAccessCard'
 import { useService, useMongoDBDatabases, useMongoDBActions, useServiceInfo } from '@/hooks'
 import { mongodbQuery, type ServiceQueryResponse } from '@/lib/api'
+import { confirmResourceDeletion } from '@/lib/confirm-resource'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -30,7 +31,7 @@ export function MongoDBPage() {
   const adminUrl = service?.admin_url || adminAccess?.url
 
   const copyEndpoint = () => {
-    const url = (info.connection as any)?.url || `mongodb://127.0.0.1:${service?.ports[0]?.split(':')[0] || '27017'}`
+    const url = (info.connection as { url?: string } | undefined)?.url || `mongodb://127.0.0.1:${service?.ports[0]?.split(':')[0] || '27017'}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -71,7 +72,7 @@ export function MongoDBPage() {
           {(info.connection || (service && service.ports.length > 0)) && (
             <div className="mt-2 flex items-center gap-2">
               <code className="rounded bg-muted px-2 py-1 text-xs">
-                {(info.connection as any)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
+                {(info.connection as { url?: string } | undefined)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
               </code>
               <Button
                 variant="ghost"
@@ -100,6 +101,7 @@ export function MongoDBPage() {
       </div>
 
       <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      {dropDB.error && <p className="text-sm text-destructive" role="alert">{dropDB.error.message}</p>}
 
       {/* Stats Summary */}
       <div className="grid gap-4 sm:grid-cols-3">
@@ -163,7 +165,7 @@ export function MongoDBPage() {
                     size="icon"
                     className="text-destructive hover:bg-destructive/10"
                     onClick={() => {
-                      if (confirm(`Are you sure you want to delete database "${db.name}"?`)) {
+                      if (confirmResourceDeletion('database', String(db.name))) {
                         dropDB.mutate(String(db.name))
                       }
                     }}

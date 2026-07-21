@@ -10,7 +10,8 @@ Use `backend/.env` (template: `backend/.env.example`).
 
 Key variables:
 
-- `API_PORT`: backend bind port
+- `API_HOST` / `API_PORT`: loopback bind address and backend port
+- `HOST_ONLY_MODE`: rejects wildcard API/service binds when true
 - `CORS_ORIGINS`: allowed origins (comma-separated or JSON array)
 - `SERVICE_PUBLIC_HOST`: host used to build admin URLs returned to frontend
 - `ADMIN_EMAIL`: default admin login email (seeded at startup)
@@ -19,6 +20,8 @@ Key variables:
 All service metadata (service names, display names, container names, admin URLs) is read from `config.py` and sourced from env.
 
 ## Local run (uv)
+
+Infra Hub v2 requires Python 3.12 or newer.
 
 ```bash
 cd backend
@@ -35,9 +38,9 @@ make dev-backend
 ## API entrypoints
 
 - Root: `http://127.0.0.1:${API_PORT}/`
-- Swagger UI: `http://127.0.0.1:${API_PORT}/api/docs`
-- OpenAPI JSON: `http://127.0.0.1:${API_PORT}/api/openapi.json`
-- Application APIs: `http://127.0.0.1:${API_PORT}/api/*`
+- Swagger UI: `http://127.0.0.1:${API_PORT}/api/v2/docs`
+- OpenAPI JSON: `http://127.0.0.1:${API_PORT}/api/v2/openapi.json`
+- Application APIs: `http://127.0.0.1:${API_PORT}/api/v2/*`
 
 ## Service ports and access (env-driven)
 
@@ -65,6 +68,7 @@ Each service `get_info()` response may include an `admin_access` block (URL, ins
 ## Notes
 
 - Backend docs/login auth depends on PostgreSQL user lookup.
-- On startup, backend ensures the default admin user from `ADMIN_EMAIL`/`ADMIN_PASSWORD` exists in PostgreSQL `users` table (in `POSTGRES_DB`, default `main_db`).
+- On startup, the v2 user table is created when absent and the default admin is inserted only when absent. Existing rows are never updated or reactivated.
 - If user DB is unreachable, auth/docs return `503` (not `401`) to avoid browser auth retry loops.
-- In production, use Nginx reverse proxy for `/api` to backend.
+- If using a reverse proxy, expose only `/api/v2` and preserve same-origin cookie semantics.
+- See [the v2 upgrade guide](../docs/V2_UPGRADE.md) for fresh deployment, account provisioning, and rollout checks.

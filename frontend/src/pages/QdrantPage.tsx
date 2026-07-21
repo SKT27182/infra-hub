@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { AdminAccessCard, type AdminAccess } from '@/components/services/AdminAccessCard'
 import { useService, useQdrantCollections, useQdrantActions, useServiceInfo } from '@/hooks'
 import { qdrantQuery, type ServiceQueryResponse } from '@/lib/api'
+import { confirmResourceDeletion } from '@/lib/confirm-resource'
 
 export function QdrantPage() {
   const { data: service } = useService('qdrant')
@@ -22,7 +23,7 @@ export function QdrantPage() {
   const adminUrl = service?.admin_url || adminAccess?.url
 
   const copyEndpoint = () => {
-    const url = (info.connection as any)?.url || `http://127.0.0.1:${service?.ports[0]?.split(':')[0] || '6333'}`
+    const url = (info.connection as { url?: string } | undefined)?.url || `http://127.0.0.1:${service?.ports[0]?.split(':')[0] || '6333'}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -63,7 +64,7 @@ export function QdrantPage() {
           {(info.connection || (service && service.ports.length > 0)) && (
             <div className="mt-2 flex items-center gap-2">
               <code className="rounded bg-muted px-2 py-1 text-xs">
-                {(info.connection as any)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
+                {(info.connection as { url?: string } | undefined)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
               </code>
               <Button
                 variant="ghost"
@@ -92,6 +93,7 @@ export function QdrantPage() {
       </div>
 
       <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      {dropCollection.error && <p className="text-sm text-destructive" role="alert">{dropCollection.error.message}</p>}
 
       {/* Collections */}
       <Card>
@@ -126,7 +128,7 @@ export function QdrantPage() {
                       size="icon"
                       className="text-destructive hover:bg-destructive/10"
                       onClick={() => {
-                        if (confirm(`Are you sure you want to delete collection "${coll.name}"?`)) {
+                        if (confirmResourceDeletion('collection', String(coll.name))) {
                           dropCollection.mutate(String(coll.name))
                         }
                       }}

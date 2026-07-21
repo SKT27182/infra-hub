@@ -4,10 +4,11 @@ Application configuration using pydantic-settings.
 
 import json
 from functools import lru_cache
+from ipaddress import ip_address
 from typing import Annotated
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
-from pydantic import field_validator, model_validator
+from pydantic import EmailStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -21,14 +22,18 @@ class Settings(BaseSettings):
     )
 
     # API Settings
-    api_host: str = "0.0.0.0"
+    api_host: str = "127.0.0.1"
     api_port: int = 8888
     debug: bool = False
     log_level: str = "INFO"
     app_public_url: str | None = None
     app_public_host: str | None = None
     service_public_host: str = "127.0.0.1"
-    admin_email: str
+    service_bind_host: str = "127.0.0.1"
+    host_only_mode: bool = True
+    max_request_body_bytes: int = 1024 * 1024
+    service_request_timeout_seconds: float = 10.0
+    admin_email: EmailStr
     admin_password: str
 
     # CORS (local dev origins; APP_PUBLIC_URL is merged in automatically)
@@ -46,6 +51,8 @@ class Settings(BaseSettings):
             public_origin = self.app_public_url.rstrip("/")
             if public_origin not in self.cors_origins:
                 self.cors_origins.append(public_origin)
+            if urlparse(self.app_public_url).scheme == "https":
+                self.auth_cookie_secure = True
         return self
 
     @field_validator("cors_origins", mode="before")
@@ -79,6 +86,7 @@ class Settings(BaseSettings):
     postgres_container_name: str = "infra-postgres"
     pgadmin_container_name: str = "infra-pgadmin"
     pgadmin_port: int = 5050
+    pgadmin_password: str
     postgres_host: str = "localhost"
     postgres_port: int = 54321
     postgres_user: str
@@ -145,27 +153,85 @@ class Settings(BaseSettings):
 
     # JWT Authentication
     jwt_secret: str
-    jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 24  # 24 hours
+    session_lifetime_minutes: int = 60 * 8
+    auth_cookie_name: str = "infra_hub_session"
+    auth_cookie_secure: bool = False
+    jwt_issuer: str = "infra-hub"
+    jwt_audience: str = "infra-hub-ui"
+
+    @model_validator(mode="after")
+    def validate_security(self) -> "Settings":
+        """Reject unsafe networking and signing configuration."""
+        if self.host_only_mode:
+            for field_name, host in (
+                ("api_host", self.api_host),
+                ("service_bind_host", self.service_bind_host),
+            ):
+                try:
+                    if not ip_address(host).is_loopback:
+                        raise ValueError(f"{field_name} must be loopback in host-only mode")
+                except ValueError as exc:
+                    if "must be loopback" in str(exc):
+                        raise
+                    raise ValueError(f"{field_name} must be an IP address") from exc
+        try:
+            service_is_loopback = ip_address(self.service_bind_host).is_loopback
+        except ValueError as exc:
+            raise ValueError("SERVICE_BIND_HOST must be an IP address") from exc
+        if not service_is_loopback:
+            raise ValueError(
+                "OpenSearch and Mongo Express security is disabled; SERVICE_BIND_HOST must remain loopback"
+            )
+        if len(self.jwt_secret.encode("utf-8")) < 32:
+            raise ValueError("JWT_SECRET must contain at least 32 bytes")
+        placeholders = {
+            "changeme",
+            "replace-with-a-unique-strong-password",
+            "replace-with-at-least-32-random-bytes",
+        }
+        if self.admin_password.lower() in placeholders:
+            raise ValueError("ADMIN_PASSWORD must not be a documented placeholder")
+        if len(self.admin_password.encode("utf-8")) > 72:
+            raise ValueError("ADMIN_PASSWORD must be at most 72 UTF-8 bytes")
+        if self.jwt_secret.lower() in placeholders:
+            raise ValueError("JWT_SECRET must not be a documented placeholder")
+        service_credentials = {
+            "POSTGRES_PASSWORD": self.postgres_password,
+            "PGADMIN_PASSWORD": self.pgadmin_password,
+            "REDIS_PASSWORD": self.redis_password,
+            "MONGO_PASSWORD": self.mongo_password,
+            "MINIO_PASSWORD": self.minio_password,
+            "NEO4J_PASSWORD": self.neo4j_password,
+        }
+        if self.qdrant_api_key:
+            service_credentials["QDRANT_API_KEY"] = self.qdrant_api_key
+        for field_name, credential in service_credentials.items():
+            normalized = credential.strip().lower()
+            if (
+                normalized.startswith("replace-with-")
+                or normalized.startswith("generate-")
+            ):
+                raise ValueError(f"{field_name} must not be a documented placeholder")
+        return self
 
     @property
     def postgres_url(self) -> str:
         """PostgreSQL connection URL."""
         return (
-            f"postgresql://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"postgresql://{quote(self.postgres_user, safe='')}:{quote(self.postgres_password, safe='')}"
+            f"@{self.postgres_host}:{self.postgres_port}/{quote(self.postgres_db, safe='')}"
         )
 
     @property
     def redis_url(self) -> str:
         """Redis connection URL."""
-        return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}"
+        return f"redis://:{quote(self.redis_password, safe='')}@{self.redis_host}:{self.redis_port}"
 
     @property
     def mongo_url(self) -> str:
         """MongoDB connection URL."""
         return (
-            f"mongodb://{self.mongo_user}:{self.mongo_password}"
+            f"mongodb://{quote(self.mongo_user, safe='')}:{quote(self.mongo_password, safe='')}"
             f"@{self.mongo_host}:{self.mongo_port}"
         )
 
@@ -223,7 +289,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
 
 
 settings = get_settings()

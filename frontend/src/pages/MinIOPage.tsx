@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { AdminAccessCard, type AdminAccess } from '@/components/services/AdminAccessCard'
 import { useService, useMinioBuckets, useMinioActions, useServiceInfo } from '@/hooks'
 import { minioQuery, type ServiceQueryResponse } from '@/lib/api'
+import { confirmResourceDeletion } from '@/lib/confirm-resource'
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
@@ -30,7 +31,7 @@ export function MinIOPage() {
   const adminUrl = service?.admin_url || adminAccess?.url
 
   const copyEndpoint = () => {
-    const url = (info.connection as any)?.url || `http://127.0.0.1:${service?.ports[0]?.split(':')[0] || '9000'}`
+    const url = (info.connection as { url?: string } | undefined)?.url || `http://127.0.0.1:${service?.ports[0]?.split(':')[0] || '9000'}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -71,7 +72,7 @@ export function MinIOPage() {
           {(info.connection || (service && service.ports.length > 0)) && (
             <div className="mt-2 flex items-center gap-2">
               <code className="rounded bg-muted px-2 py-1 text-xs">
-                {(info.connection as any)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
+                {(info.connection as { url?: string } | undefined)?.url || `127.0.0.1:${service?.ports[0].split(':')[0]}`}
               </code>
               <Button
                 variant="ghost"
@@ -100,6 +101,7 @@ export function MinIOPage() {
       </div>
 
       <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      {dropBucket.error && <p className="text-sm text-destructive" role="alert">{dropBucket.error.message}</p>}
 
       {/* Stats Summary */}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -145,7 +147,7 @@ export function MinIOPage() {
                     size="icon"
                     className="text-destructive hover:bg-destructive/10"
                     onClick={() => {
-                      if (confirm(`Are you sure you want to delete bucket "${bucket.name}"?`)) {
+                      if (confirmResourceDeletion('bucket', String(bucket.name))) {
                         dropBucket.mutate(String(bucket.name))
                       }
                     }}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import suppress
 from pathlib import Path
 
 from config import settings
@@ -54,19 +55,21 @@ def sql_echo_enabled() -> bool:
 def _has_backend_file_handler(root: logging.Logger, path: Path) -> bool:
     target = str(path.resolve())
     for handler in root.handlers:
-        if isinstance(handler, logging.FileHandler):
-            if Path(handler.baseFilename).resolve() == Path(target):
-                return True
+        if isinstance(handler, logging.FileHandler) and Path(
+            handler.baseFilename
+        ).resolve() == Path(target):
+            return True
     return False
 
 
 def _has_colored_console_handler(logger: logging.Logger) -> bool:
     for handler in logger.handlers:
-        if isinstance(handler, logging.StreamHandler) and not isinstance(
-            handler, logging.FileHandler
+        if (
+            isinstance(handler, logging.StreamHandler)
+            and not isinstance(handler, logging.FileHandler)
+            and isinstance(handler.formatter, CustomFormatter)
         ):
-            if isinstance(handler.formatter, CustomFormatter):
-                return True
+            return True
     return False
 
 
@@ -75,10 +78,8 @@ def _clear_non_file_handlers(logger: logging.Logger) -> None:
         if isinstance(handler, logging.FileHandler):
             continue
         logger.removeHandler(handler)
-        try:
+        with suppress(Exception):
             handler.close()
-        except Exception:
-            pass
 
 
 def _attach_colored_console(

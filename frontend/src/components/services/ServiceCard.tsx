@@ -41,25 +41,26 @@ export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
   const { start, stop, restart } = useServiceActions(service.name)
   const { data: infoData } = useServiceInfo(service.name)
   const isLoading = start.isPending || stop.isPending || restart.isPending
+  const actionError = start.error || stop.error || restart.error
   const [copied, setCopied] = useState(false)
   const navigate = useNavigate()
 
   const info = infoData?.info || {}
   
   const getResourceCount = () => {
-    if (info.databases) return `${(info.databases as any[]).length} Databases`
-    if (info.buckets) return `${(info.buckets as any[]).length} Buckets`
-    if (info.collections) return `${(info.collections as any[]).length} Collections`
-    if (info.indices) return `${(info.indices as any[]).length} Indices`
+    if (Array.isArray(info.databases)) return `${info.databases.length} Databases`
+    if (Array.isArray(info.buckets)) return `${info.buckets.length} Buckets`
+    if (Array.isArray(info.collections)) return `${info.collections.length} Collections`
+    if (Array.isArray(info.indices)) return `${info.indices.length} Indices`
     if (typeof info.node_count === 'number') return `${String(info.node_count)} Nodes`
-    if (info.labels) return `${(info.labels as any[]).length} Labels`
+    if (Array.isArray(info.labels)) return `${info.labels.length} Labels`
     if (typeof info.total_keys === 'number') return `${String(info.total_keys)} Keys`
     return null
   }
 
   const copyEndpoint = (e: React.MouseEvent) => {
     e.stopPropagation()
-    const url = (info.connection as any)?.url || `http://127.0.0.1:${service.ports[0]?.split(':')[0] || ''}`
+    const url = (info.connection as { url?: string } | undefined)?.url || `http://127.0.0.1:${service.ports[0]?.split(':')[0] || ''}`
     navigator.clipboard.writeText(url)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
@@ -102,7 +103,7 @@ export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
                 <span>Endpoint:</span>
                 <div className="flex items-center gap-1">
                   <span className="font-mono text-xs truncate max-w-[150px]">
-                    {(info.connection as any)?.url || `127.0.0.1:${service.ports[0].split(':')[0]}`}
+                    {(info.connection as { url?: string } | undefined)?.url || `127.0.0.1:${service.ports[0].split(':')[0]}`}
                   </span>
                   <Button
                     variant="ghost"
@@ -205,6 +206,11 @@ export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
                 )}
               </div>
             </TooltipProvider>
+          )}
+          {actionError && (
+            <p className="text-xs text-destructive" role="alert">
+              {actionError instanceof Error ? actionError.message : 'Container action failed'}
+            </p>
           )}
         </div>
       </CardContent>

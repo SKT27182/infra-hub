@@ -9,7 +9,7 @@ import sys
 async def _run() -> None:
     from services.user_db import user_service
 
-    await user_service.ensure_user_table()
+    await user_service.ensure_schema()
     await user_service.ensure_default_admin_user()
 
 

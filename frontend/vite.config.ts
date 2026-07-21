@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const port = Number(env.VITE_PORT)
   const apiTarget = env.VITE_DEV_API_TARGET
+  const host = env.VITE_HOST || '127.0.0.1'
   const allowedHosts = resolveAllowedHosts(env)
 
   if (!Number.isInteger(port) || port <= 0) {
@@ -33,18 +34,18 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      host: '0.0.0.0',
+      host,
       port,
       allowedHosts,
       proxy: {
-        '/api': {
+        '/api/v2': {
           target: apiTarget,
           changeOrigin: true,
         },
       },
     },
     preview: {
-      host: '0.0.0.0',
+      host,
       port,
     },
   }

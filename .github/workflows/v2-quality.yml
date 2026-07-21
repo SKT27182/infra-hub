@@ -1,0 +1,51 @@
+name: v2 quality gates
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run mypy .
+      - run: uv run pytest -q
+      - run: uv export --frozen --no-dev --format requirements-txt --output-file /tmp/infra-hub-requirements.txt
+      - run: uvx pip-audit -r /tmp/infra-hub-requirements.txt
+      - run: uvx bandit -r . -ll -x .venv,tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm audit --prod
+
+  compose-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: mkdir -p /tmp/infra-hub-persist
+      - run: INFRA_PERSIST_DIR=/tmp/infra-hub-persist docker compose --env-file backend/.env.example config --quiet

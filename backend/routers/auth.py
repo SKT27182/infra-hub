@@ -1,99 +1,78 @@
-"""
-Authentication router handling login and signup.
-"""
+"""Infra Hub v2 login and logout endpoints."""
 
-from typing import Any
+from collections import defaultdict, deque
+from time import monotonic
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
 
 from config import settings
 from services.auth import auth_service
 from services.user_db import UserStoreUnavailableError, user_service
-from utils.logger import create_logger
 
-logger = create_logger(__name__, level=settings.log_level)
-
-router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-class UserCreate(BaseModel):
-    """Signup request schema."""
-
-    email: EmailStr
-    password: str
-    full_name: str | None = None
+router = APIRouter(prefix="/auth", tags=["Auth"])
+_attempts: dict[str, deque[float]] = defaultdict(deque)
+_WINDOW_SECONDS = 300
+_MAX_FAILURES = 5
+_MAX_TRACKED_KEYS = 10_000
 
 
-class UserLogin(BaseModel):
-    """Login request schema."""
-
+class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
 
-class TokenResponse(BaseModel):
-    """Token response schema."""
-
-    access_token: str
-    token_type: str = "bearer"
-    user: dict[str, Any]
+def _rate_keys(request: Request, email: str) -> tuple[str, str]:
+    host = request.client.host if request.client else "local"
+    return f"ip:{host}", f"email:{email.lower()}"
 
 
-"""
-@router.post("/signup", response_model=TokenResponse)
-async def signup(user_data: UserCreate) -> dict[str, Any]:
-...
-    }
-"""
+def _check_rate_limit(key: str) -> None:
+    now = monotonic()
+    attempts = _attempts[key]
+    while attempts and attempts[0] < now - _WINDOW_SECONDS:
+        attempts.popleft()
+    if len(attempts) >= _MAX_FAILURES:
+        raise HTTPException(status_code=429, detail="Too many login attempts")
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(login_data: UserLogin) -> dict[str, Any]:
-    """Login a user."""
+@router.post("/login")
+async def login(body: LoginRequest, request: Request, response: Response) -> dict[str, object]:
+    """Authenticate and set a versioned HttpOnly session cookie."""
+    keys = _rate_keys(request, body.email)
+    for key in keys:
+        _check_rate_limit(key)
     try:
-        user = await user_service.get_user_by_email(login_data.email)
+        user = await user_service.get_user_by_email(body.email)
     except UserStoreUnavailableError as exc:
-        logger.warning("Login unavailable: user database unreachable")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication is unavailable because the user database is unreachable.",
-        ) from exc
-
-    if not user:
-        logger.debug("Login failed: unknown email")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
-
-    if not user.get("is_active", True):
-        logger.warning("Login rejected: deactivated account for %s", login_data.email)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Account is deactivated",
-        )
-
-    if not auth_service.verify_password(login_data.password, user["hashed_password"]):
-        logger.debug("Login failed: invalid password for %s", login_data.email)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
-
-    role = user.get("role", "USER")
-    access_token = auth_service.create_access_token(
-        data={"sub": user["email"], "id": user["id"], "role": role}
+        raise HTTPException(status_code=503, detail="Authentication store unavailable") from exc
+    valid = bool(
+        user
+        and user.get("is_active", False)
+        and auth_service.verify_password(body.password, user["hashed_password"])
     )
-    logger.info("User logged in: %s", login_data.email)
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "name": user.get("name") or user.get("full_name") or "User",
-            "role": role,
-            "is_active": user.get("is_active", True),
-        },
-    }
+    if not valid:
+        for key in keys:
+            if len(_attempts) >= _MAX_TRACKED_KEYS and key not in _attempts:
+                _attempts.pop(next(iter(_attempts)))
+            _attempts[key].append(monotonic())
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    assert user is not None
+    for key in keys:
+        _attempts.pop(key, None)
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=auth_service.create_session_token(user),
+        max_age=settings.session_lifetime_minutes * 60,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite="strict",
+        path="/api/v2",
+    )
+    return user_service.public_user(user)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(response: Response) -> None:
+    """Clear the v2 session cookie."""
+    response.delete_cookie(settings.auth_cookie_name, path="/api/v2")

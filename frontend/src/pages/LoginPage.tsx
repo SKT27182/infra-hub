@@ -10,7 +10,7 @@ import {
   CardContent,
   CardFooter,
 } from '@/components/AuthLoginLayout'
-import { API_BASE } from '@/lib/api'
+import { loginUser } from '@/lib/api'
 
 export function LoginPage() {
   const [email, setEmail] = useState('')
@@ -26,19 +26,8 @@ export function LoginPage() {
     setError('')
 
     try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.detail || 'Login failed')
-      }
-
-      const data = await response.json()
-      login(data.access_token, data.user)
+      const user = await loginUser(email, password)
+      login(user)
       navigate('/')
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed')

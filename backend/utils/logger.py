@@ -1,13 +1,12 @@
-import logging
-from logging import Logger
 import datetime
-import os
-from copy import deepcopy
-
-from typing import Optional, List, Literal, Callable, Dict
-
-import time
 import json
+import logging
+import os
+import time
+from collections.abc import Callable
+from copy import deepcopy
+from logging import Logger
+from typing import Any, cast
 
 ################################################
 
@@ -35,38 +34,50 @@ COLOUR_MAPPING = {
 
 
 class ColumnNotFound(Exception):
-    def __init__(self, columns):
-        self.message = f"Avialable columns are: {columns}"
+    def __init__(self, columns: list[str]) -> None:
+        self.message = f"Available columns are: {columns}"
         super().__init__(self.message)
 
 
 ############################################# Logger #######################################
 
 
-def create_suppression_filter(suppressed_loggers):
-    def filter_func(record):
+def create_suppression_filter(
+    suppressed_loggers: list[str],
+) -> Callable[[logging.LogRecord], bool]:
+    def filter_func(record: logging.LogRecord) -> bool:
         return record.name not in suppressed_loggers
 
     return filter_func
 
 
 def add_logging_level(
-    level_name: str, level_num: int, method_name: Optional[str] = None
-):
+    level_name: str, level_num: int, method_name: str | None = None
+) -> None:
     if not method_name:
         method_name = level_name.lower()
 
-    def log_for_level(self, message, *args, **kwargs):
+    def log_for_level(
+        self: Logger, message: object, *args: object, **kwargs: Any
+    ) -> None:
         if self.isEnabledFor(level_num):
             self._log(level_num, message, args, **kwargs)
 
-    def log_to_root(message, *args, **kwargs):
+    def log_to_root(message: object, *args: object, **kwargs: Any) -> None:
         logging.log(level_num, message, *args, **kwargs)
 
     logging.addLevelName(level_num, level_name.upper())
     setattr(logging, level_name.upper(), level_num)
     setattr(logging.getLoggerClass(), method_name, log_for_level)
     setattr(logging, method_name, log_to_root)
+
+
+class InfraLogger(Logger):
+    """Logger type augmented with the installed verbose method."""
+
+    def verbose(self, message: object, *args: object, **kwargs: Any) -> None:
+        """Log at the Infra Hub verbose level."""
+        self.log(logging.INFO + 3, message, *args, **kwargs)
 
 
 class CustomFormatter(logging.Formatter):
@@ -81,7 +92,7 @@ class CustomFormatter(logging.Formatter):
         + COLOUR_MAPPING["UNDERLINE"],
     }
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         formatted_record = deepcopy(record)
 
         level_name = formatted_record.levelname
@@ -106,11 +117,11 @@ class CustomFormatter(logging.Formatter):
 
 
 class JSONFormatter(logging.Formatter):
-    def __init__(self, fmt=None, datefmt=None):
+    def __init__(self, fmt: str | None = None, datefmt: str | None = None) -> None:
         super().__init__(fmt, datefmt)
 
-    def format(self, record):
-        log_data = {
+    def format(self, record: logging.LogRecord) -> str:
+        log_data: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
             "name": record.name,
             "level": record.levelname,
@@ -122,7 +133,9 @@ class JSONFormatter(logging.Formatter):
 
         return json.dumps(log_data)
 
-    def formatTime(self, record, datefmt=None):
+    def formatTime(
+        self, record: logging.LogRecord, datefmt: str | None = None
+    ) -> str:
         ct = self.converter(record.created)
         if datefmt:
             s = time.strftime(datefmt, ct)
@@ -134,22 +147,14 @@ class JSONFormatter(logging.Formatter):
 
 def create_logger(
     name: str,
-    level: Literal[
-        "notset",
-        "debug",
-        "info",
-        "verbose",
-        "warning",
-        "error",
-        "critical",
-    ] = "info",
-    log_file: Optional[str] = None,
+    level: str = "info",
+    log_file: str | None = None,
     consolidate_file_loggers: bool = True,
     use_json: bool = True,
-    filters: Optional[List[Callable[[logging.LogRecord], bool]]] = None,
-    custom_levels: Optional[Dict[str, int]] = None,
-    suppress_loggers: Optional[List[str]] = None,
-) -> Logger:
+    filters: list[Callable[[logging.LogRecord], bool]] | None = None,
+    custom_levels: dict[str, int] | None = None,
+    suppress_loggers: list[str] | None = None,
+) -> InfraLogger:
     """
     Create a logger with the specified name and level, including color formatting for console
     and JSON formatting for file output, with optional custom filters.
@@ -176,7 +181,7 @@ def create_logger(
     """
     verbose_level: int = logging.INFO + 3
 
-    level_to_int_map: Dict[str, int] = {
+    level_to_int_map: dict[str, int] = {
         "notset": logging.NOTSET,
         "debug": logging.DEBUG,
         "info": logging.INFO,
@@ -199,10 +204,8 @@ def create_logger(
                 "BLUE"
             ]  # Default color for custom levels
 
-    logger: Logger = logging.getLogger(name)
-    level_int: int = (
-        level_to_int_map[level.lower()] if isinstance(level, str) else level
-    )
+    logger = cast(InfraLogger, logging.getLogger(name))
+    level_int = level_to_int_map.get(level.lower(), logging.INFO)
     logger.setLevel(level_int)
 
     # Add suppression filter if suppress_loggers is provided
@@ -222,7 +225,7 @@ def create_logger(
         logger.handlers.clear()
 
     # Console handler with color formatting
-    console_handler: logging.StreamHandler = logging.StreamHandler()
+    console_handler: logging.StreamHandler[Any] = logging.StreamHandler()
     console_handler.setLevel(level_int)
     console_handler.setFormatter(custom_formatter)
     logger.addHandler(console_handler)

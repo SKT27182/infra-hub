@@ -1,124 +1,97 @@
-"""
-Authentication service handling JWT and password hashing.
-"""
+"""Cookie-based authentication for the Infra Hub v2 API."""
 
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Annotated, Any
+from uuid import uuid4
 
+import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
-from passlib.context import CryptContext
+from fastapi import Cookie, HTTPException, status
 
 from config import settings
 from utils.logger import create_logger
 
 logger = create_logger(__name__, level=settings.log_level)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 class AuthService:
-    """Authentication and authorization helper."""
+    """Create and validate password hashes and versioned session tokens."""
 
     @staticmethod
     def get_password_hash(password: str) -> str:
-        """Hash a password."""
-        return pwd_context.hash(password)
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 UTF-8 bytes")
+        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode(
+            "ascii"
+        )
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verify a password against a hash."""
-        return pwd_context.verify(plain_password, hashed_password)
-
-    @staticmethod
-    def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
-        """Create a JWT access token."""
-        to_encode = data.copy()
-        if expires_delta:
-            expire = datetime.now(timezone.utc) + expires_delta
-        else:
-            expire = datetime.now(timezone.utc) + timedelta(
-                minutes=settings.access_token_expire_minutes
-            )
-        to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(
-            to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm
-        )
-        return encoded_jwt
-
-    @staticmethod
-    def decode_token(token: str) -> dict[str, Any] | None:
-        """Decode and validate a JWT token."""
         try:
-            payload = jwt.decode(
-                token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+            return bcrypt.checkpw(
+                plain_password.encode("utf-8"), hashed_password.encode("ascii")
             )
-            return payload
-        except (jwt.PyJWTError, Exception):
-            logger.debug("JWT decode failed")
+        except (ValueError, UnicodeError):
+            return False
+
+    @staticmethod
+    def create_session_token(user: dict[str, Any]) -> str:
+        now = datetime.now(UTC)
+        payload = {
+            "sub": str(user["id"]),
+            "email": user["email"],
+            "ver": int(user.get("auth_version", 0)),
+            "iss": settings.jwt_issuer,
+            "aud": settings.jwt_audience,
+            "iat": now,
+            "nbf": now,
+            "exp": now + timedelta(minutes=settings.session_lifetime_minutes),
+            "jti": str(uuid4()),
+        }
+        return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+
+    @staticmethod
+    def decode_session_token(token: str) -> dict[str, Any] | None:
+        try:
+            return jwt.decode(
+                token,
+                settings.jwt_secret,
+                algorithms=["HS256"],
+                audience=settings.jwt_audience,
+                issuer=settings.jwt_issuer,
+                options={"require": ["sub", "email", "ver", "iat", "nbf", "exp", "jti"]},
+            )
+        except jwt.PyJWTError:
             return None
 
 
 auth_service = AuthService()
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> dict[str, Any]:
-    """Dependency to get the current authenticated user."""
+async def get_current_user(
+    session_token: Annotated[str | None, Cookie(alias=settings.auth_cookie_name)] = None,
+) -> dict[str, Any]:
+    """Resolve an active user from the signed HttpOnly session cookie."""
     from services.user_db import UserStoreUnavailableError, user_service
 
-    credentials_exception = HTTPException(
+    unauthorized = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+        detail="Authentication required",
     )
-    payload = auth_service.decode_token(token)
-    if payload is None:
-        logger.debug("Auth rejected: invalid token")
-        raise credentials_exception
-    email: str | None = payload.get("sub")
-    if email is None:
-        raise credentials_exception
-
+    if not session_token:
+        raise unauthorized
+    payload = auth_service.decode_session_token(session_token)
+    if not payload:
+        raise unauthorized
     try:
-        user = await user_service.get_user_by_email(email)
+        user = await user_service.get_user_by_email(str(payload["email"]))
     except UserStoreUnavailableError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="User database is unavailable",
-        ) from exc
-
-    if not user or not user.get("is_active", True):
-        logger.debug("Auth rejected: user missing or inactive for %s", email)
-        raise credentials_exception
-
-    name = user.get("name") or user.get("full_name")
-    if not name:
-        email = user.get("email") or ""
-        name = email.split("@", 1)[0] if email else "User"
-    return {
-        "id": user["id"],
-        "email": user["email"],
-        "name": name,
-        "role": user.get("role", "USER"),
-        "is_active": user.get("is_active", True),
-        "created_at": user.get("created_at"),
-        "updated_at": user.get("updated_at"),
-    }
-
-
-async def require_super_admin(
-    current_user: dict[str, Any] = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Require SUPER_ADMIN role."""
-    if current_user.get("role") != "SUPER_ADMIN":
-        logger.warning(
-            "Super admin required, denied for user id=%s",
-            current_user.get("id"),
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Super admin privileges required",
-        )
-    return current_user
+        raise HTTPException(status_code=503, detail="Authentication store unavailable") from exc
+    if (
+        not user
+        or not user.get("is_active", False)
+        or str(user["id"]) != str(payload["sub"])
+        or int(user.get("auth_version", 0)) != int(payload["ver"])
+    ):
+        raise unauthorized
+    return user_service.public_user(user)

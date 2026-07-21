@@ -45,4 +45,6 @@ function Badge({
   )
 }
 
+// shadcn exports variants for composed controls.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Badge, badgeVariants }

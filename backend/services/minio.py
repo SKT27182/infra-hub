@@ -2,6 +2,7 @@
 MinIO S3-compatible object storage service implementation.
 """
 
+import asyncio
 from typing import Any
 
 from minio import Minio
@@ -9,6 +10,7 @@ from minio.error import S3Error
 
 from config import settings
 from utils.logger import create_logger
+
 from .admin_access import admin_access_block
 from .base import BaseService
 
@@ -35,20 +37,8 @@ class MinIOService(BaseService):
         """Get minimal but complete MinIO information."""
         try:
             client = self._get_client()
-            buckets = client.list_buckets()
-            details = []
-            for b in buckets:
-                try:
-                    objs = list(client.list_objects(b.name, recursive=True))
-                    details.append(
-                        {
-                            "name": b.name,
-                            "objects": len(objs),
-                            "size": sum(o.size for o in objs),
-                        }
-                    )
-                except:
-                    details.append({"name": b.name, "error": "Could not list objects"})
+            buckets = await asyncio.to_thread(client.list_buckets)
+            details = [{"name": bucket.name} for bucket in buckets[:500]]
 
             return {
                 "status": self.get_status().model_dump(),
@@ -66,19 +56,20 @@ class MinIOService(BaseService):
                 "connection": {
                     "url": f"http://{settings.service_public_host}:{settings.minio_port}",
                     "access_key": settings.minio_user,
-                    "secret_key": settings.minio_password,
+                    "secret_key_env": "MINIO_PASSWORD",
                 },
                 "buckets": details,
+                "buckets_truncated": len(buckets) > 500,
             }
         except Exception as e:
-            logger.warning("MinIO get_info failed: %s", e)
-            return {"error": str(e), "status": self.get_status().model_dump()}
+            logger.warning("MinIO get_info failed (%s)", type(e).__name__)
+            return {"error": "MinIO information is unavailable", "status": self.get_status().model_dump()}
 
     async def create_bucket(self, name: str) -> bool:
         """Create a new bucket."""
         try:
             client = self._get_client()
-            client.make_bucket(name)
+            await asyncio.to_thread(client.make_bucket, name)
             return True
         except Exception:
             return False
@@ -87,7 +78,7 @@ class MinIOService(BaseService):
         """Drop an existing bucket."""
         try:
             client = self._get_client()
-            client.remove_bucket(name)
+            await asyncio.to_thread(client.remove_bucket, name)
             return True
         except Exception:
             return False
@@ -102,7 +93,7 @@ class MinIOService(BaseService):
             client = self._get_client()
 
             if action == "list_buckets":
-                buckets = client.list_buckets()
+                buckets = await asyncio.to_thread(client.list_buckets)
                 return {
                     "success": True,
                     "result": [
@@ -112,8 +103,9 @@ class MinIOService(BaseService):
                                 b.creation_date.isoformat() if b.creation_date else None
                             ),
                         }
-                        for b in buckets
+                        for b in buckets[:500]
                     ],
+                    "truncated": len(buckets) > 500,
                 }
 
             bucket = str(payload.get("bucket") or "").strip()
@@ -122,34 +114,49 @@ class MinIOService(BaseService):
 
             if action == "list_objects":
                 prefix = str(payload.get("prefix") or "")
+                start_after = str(payload.get("cursor") or "")
                 recursive = bool(payload.get("recursive", True))
-                limit = int(payload.get("limit", 100))
-                objects = client.list_objects(
-                    bucket, prefix=prefix, recursive=recursive
-                )
-                result = []
-                for i, obj in enumerate(objects):
-                    if i >= limit:
-                        break
-                    result.append(
-                        {
-                            "name": obj.object_name,
-                            "size": obj.size,
-                            "last_modified": (
-                                obj.last_modified.isoformat()
-                                if obj.last_modified
-                                else None
-                            ),
-                            "etag": obj.etag,
-                        }
+                limit = max(1, min(int(payload.get("limit", 100)), 500))
+                def collect_objects() -> list[dict[str, Any]]:
+                    result: list[dict[str, Any]] = []
+                    objects = client.list_objects(
+                        bucket,
+                        prefix=prefix,
+                        recursive=recursive,
+                        start_after=start_after or None,
                     )
-                return {"success": True, "count": len(result), "result": result}
+                    for index, obj in enumerate(objects):
+                        if index > limit:
+                            break
+                        result.append(
+                            {
+                                "name": obj.object_name,
+                                "size": obj.size,
+                                "last_modified": obj.last_modified.isoformat()
+                                if obj.last_modified
+                                else None,
+                                "etag": obj.etag,
+                            }
+                        )
+                    return result
+
+                result = await asyncio.to_thread(collect_objects)
+                return {
+                    "success": True,
+                    "count": min(len(result), limit),
+                    "result": result[:limit],
+                    "page_size": limit,
+                    "truncated": len(result) > limit,
+                    "next_cursor": result[limit - 1]["name"]
+                    if len(result) > limit
+                    else None,
+                }
 
             if action == "stat_object":
                 object_name = str(payload.get("object_name") or "").strip()
                 if not object_name:
                     return {"success": False, "error": "object_name is required"}
-                stat = client.stat_object(bucket, object_name)
+                stat = await asyncio.to_thread(client.stat_object, bucket, object_name)
                 return {
                     "success": True,
                     "result": {
@@ -167,8 +174,8 @@ class MinIOService(BaseService):
 
             return {"success": False, "error": f"Unsupported action: {action}"}
         except S3Error as e:
-            logger.error("MinIO S3 error action=%s: %s", action, e)
-            return {"success": False, "error": str(e)}
+            logger.error("MinIO S3 error action=%s type=%s", action, type(e).__name__)
+            return {"success": False, "error": "MinIO request failed"}
         except Exception as e:
-            logger.error("MinIO query failed action=%s: %s", action, e)
-            return {"success": False, "error": str(e)}
+            logger.error("MinIO query failed action=%s type=%s", action, type(e).__name__)
+            return {"success": False, "error": "MinIO request failed"}

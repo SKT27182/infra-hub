@@ -45,7 +45,11 @@ export function Neo4jPage() {
 
     setQueryRunning(true)
     try {
-      const result = await neo4jQuery('run_readonly_cypher', { cypher: query, limit: 100 })
+      if (/\b(CREATE|MERGE|DELETE|DETACH|DROP|REMOVE|SET)\b/i.test(query) &&
+          !window.confirm('This privileged query can change or delete graph data. Continue?')) {
+        return
+      }
+      const result = await neo4jQuery('run_cypher', { cypher: query, limit: 100 })
       setQueryResult(result)
     } catch (err) {
       setQueryResult({
