@@ -1,8 +1,10 @@
 """Static policy checks for the host-only Compose deployment."""
 
+import re
 from pathlib import Path
 
 COMPOSE = Path(__file__).resolve().parents[2] / "docker-compose.yml"
+MAKEFILE = COMPOSE.with_name("Makefile")
 
 
 def test_every_published_port_uses_loopback_bind_setting() -> None:
@@ -28,3 +30,21 @@ def test_persistence_and_restart_policy_are_v2_safe() -> None:
     image_lines = [line.strip() for line in compose.splitlines() if line.strip().startswith("image:")]
     assert len(image_lines) == 11
     assert all("@sha256:" in line for line in image_lines)
+
+
+def test_detachable_admin_services_are_default_stopped() -> None:
+    compose = COMPOSE.read_text(encoding="utf-8")
+    makefile = MAKEFILE.read_text(encoding="utf-8")
+    assert compose.count('profiles: ["admin"]') == 4
+    for service in (
+        "pgadmin",
+        "redisinsight",
+        "mongo-express",
+        "opensearch-dashboards",
+    ):
+        match = re.search(rf"(?ms)^  {re.escape(service)}:\n(.*?)(?=^  \S|\Z)", compose)
+        assert match is not None
+        service_block = match.group(1)
+        assert 'profiles: ["admin"]' in service_block
+    assert "--profile admin create $(ADMIN_SERVICES)" in makefile
+    assert "--profile admin stop $(ADMIN_SERVICES)" in makefile

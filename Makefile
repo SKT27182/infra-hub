@@ -28,6 +28,8 @@ LOG_PATH := $(if $(LOG_PATH_RAW),$(LOG_PATH_RAW),$(LOG_DIR))
 export INFRA_PERSIST_DIR := $(PERSIST_DIR)
 export LOG_PATH := $(LOG_PATH)
 DOCKER_COMPOSE := docker compose --env-file $(BACKEND_ENV_FILE)
+CORE_SERVICES := postgres redis mongodb qdrant minio neo4j opensearch
+ADMIN_SERVICES := pgadmin redisinsight mongo-express opensearch-dashboards
 APP_HOST_RAW := $(shell awk -F= '/^SERVICE_PUBLIC_HOST=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(BACKEND_ENV_FILE) 2>/dev/null)
 APP_HOST := $(if $(APP_HOST_RAW),$(APP_HOST_RAW),127.0.0.1)
 API_BIND_HOST_RAW := $(shell awk -F= '/^API_HOST=/{gsub(/^[ \t]+|[ \t]+$$/,"",$$2); print $$2; exit}' $(BACKEND_ENV_FILE) 2>/dev/null)
@@ -100,7 +102,9 @@ prepare-logs:
 
 up:
 	@mkdir -p "$(PERSIST_DIR)"
-	$(DOCKER_COMPOSE) up -d
+	$(DOCKER_COMPOSE) up -d $(CORE_SERVICES)
+	$(DOCKER_COMPOSE) --profile admin create $(ADMIN_SERVICES)
+	$(DOCKER_COMPOSE) --profile admin stop $(ADMIN_SERVICES)
 	@$(MAKE) --no-print-directory print-urls
 
 dev: up
@@ -196,13 +200,13 @@ db-bootstrap: ## Ensure users table and default admin exist
 	cd backend && .venv/bin/python -m scripts.db_bootstrap
 
 down: stop-local
-	$(DOCKER_COMPOSE) down
+	$(DOCKER_COMPOSE) --profile admin down
 
 logs:
-	$(DOCKER_COMPOSE) logs -f
+	$(DOCKER_COMPOSE) --profile admin logs -f
 
 ps:
-	$(DOCKER_COMPOSE) ps
+	$(DOCKER_COMPOSE) --profile admin ps
 
 health:
 	@echo "=== Service Health Check ==="
@@ -233,13 +237,13 @@ health:
 	@curl -sf --max-time $(CURL_MAX_TIME) "http://$(APP_HOST):$(OPENSEARCH_HTTP_PORT)/_cluster/health" >/dev/null && echo "  ✓ Healthy" || echo "  ✗ Not ready"
 	@echo ""
 	@echo "Admin UIs:"
-	@curl -sf --max-time $(CURL_MAX_TIME) "http://$(APP_HOST):$(REDISINSIGHT_PORT)/api/health/" >/dev/null && echo "  ✓ RedisInsight ($(APP_HOST):$(REDISINSIGHT_PORT))" || echo "  ✗ RedisInsight not ready"
+	@docker inspect -f '{{.State.Status}}' infra-redisinsight 2>/dev/null | grep -q running && echo "  ✓ RedisInsight ($(APP_HOST):$(REDISINSIGHT_PORT))" || echo "  ○ RedisInsight stopped (start from Infra Hub)"
 	@curl -sf --max-time $(CURL_MAX_TIME) -o /dev/null "http://$(APP_HOST):$(MINIO_CONSOLE_PORT)/" && echo "  ✓ MinIO Console ($(APP_HOST):$(MINIO_CONSOLE_PORT))" || echo "  ✗ MinIO Console not ready"
 	@curl -sf --max-time $(CURL_MAX_TIME) -o /dev/null "http://$(APP_HOST):$(QDRANT_REST_PORT)/dashboard" && echo "  ✓ Qdrant dashboard ($(APP_HOST):$(QDRANT_REST_PORT)/dashboard)" || echo "  ✗ Qdrant dashboard not ready"
-	@curl -sf --max-time $(CURL_MAX_TIME) -o /dev/null "http://$(APP_HOST):$(PGADMIN_PORT)/" && echo "  ✓ pgAdmin ($(APP_HOST):$(PGADMIN_PORT))" || echo "  ✗ pgAdmin not ready (container may still be starting)"
-	@curl -sf --max-time $(CURL_MAX_TIME) -o /dev/null "http://$(APP_HOST):$(MONGO_EXPRESS_PORT)/" && echo "  ✓ Mongo Express ($(APP_HOST):$(MONGO_EXPRESS_PORT))" || echo "  ✗ Mongo Express not ready"
+	@docker inspect -f '{{.State.Status}}' infra-pgadmin 2>/dev/null | grep -q running && echo "  ✓ pgAdmin ($(APP_HOST):$(PGADMIN_PORT))" || echo "  ○ pgAdmin stopped (start from Infra Hub)"
+	@docker inspect -f '{{.State.Status}}' infra-mongo-express 2>/dev/null | grep -q running && echo "  ✓ Mongo Express ($(APP_HOST):$(MONGO_EXPRESS_PORT))" || echo "  ○ Mongo Express stopped (start from Infra Hub)"
 	@curl -sf --max-time $(CURL_MAX_TIME) -o /dev/null "http://$(APP_HOST):$(NEO4J_HTTP_PORT)/" && echo "  ✓ Neo4j Browser ($(APP_HOST):$(NEO4J_HTTP_PORT))" || echo "  ✗ Neo4j Browser not ready"
-	@curl -sf --max-time $(CURL_MAX_TIME) "http://$(APP_HOST):$(OPENSEARCH_DASHBOARDS_PORT)/api/status" >/dev/null && echo "  ✓ OpenSearch Dashboards ($(APP_HOST):$(OPENSEARCH_DASHBOARDS_PORT))" || echo "  ✗ OpenSearch Dashboards not ready"
+	@docker inspect -f '{{.State.Status}}' infra-opensearch-dashboards 2>/dev/null | grep -q running && echo "  ✓ OpenSearch Dashboards ($(APP_HOST):$(OPENSEARCH_DASHBOARDS_PORT))" || echo "  ○ OpenSearch Dashboards stopped (start from Infra Hub)"
 
 build: install
 	cd frontend && pnpm build
@@ -251,13 +255,13 @@ clean: stop-local
 
 clean-all: clean
 	rm -rf "$(LOG_DIR)"
-	$(DOCKER_COMPOSE) down -v --remove-orphans
+	$(DOCKER_COMPOSE) --profile admin down -v --remove-orphans
 
 # Tears down shared infra (Redis, MinIO, Postgres, …). Other apps may depend on these.
 clean-hard: stop-local
 	cd backend && .venv/bin/python -m scripts.validate_cleanup_target "$(PERSIST_DIR)"
 	rm -rf "$(LOG_DIR)"
-	$(DOCKER_COMPOSE) down --volumes --remove-orphans --rmi local
+	$(DOCKER_COMPOSE) --profile admin down --volumes --remove-orphans --rmi local
 	rm -rf "$(PERSIST_DIR)"
 
 print-urls:
@@ -280,15 +284,21 @@ print-urls:
 
 up-postgres:
 	@mkdir -p "$(PERSIST_DIR)"
-	$(DOCKER_COMPOSE) up -d postgres pgadmin
+	$(DOCKER_COMPOSE) up -d postgres
+	$(DOCKER_COMPOSE) --profile admin create pgadmin
+	$(DOCKER_COMPOSE) --profile admin stop pgadmin
 
 up-redis:
 	@mkdir -p "$(PERSIST_DIR)"
-	$(DOCKER_COMPOSE) up -d redis redisinsight
+	$(DOCKER_COMPOSE) up -d redis
+	$(DOCKER_COMPOSE) --profile admin create redisinsight
+	$(DOCKER_COMPOSE) --profile admin stop redisinsight
 
 up-mongodb:
 	@mkdir -p "$(PERSIST_DIR)"
-	$(DOCKER_COMPOSE) up -d mongodb mongo-express
+	$(DOCKER_COMPOSE) up -d mongodb
+	$(DOCKER_COMPOSE) --profile admin create mongo-express
+	$(DOCKER_COMPOSE) --profile admin stop mongo-express
 
 up-qdrant:
 	@mkdir -p "$(PERSIST_DIR)"
@@ -304,4 +314,6 @@ up-neo4j:
 
 up-opensearch:
 	@mkdir -p "$(PERSIST_DIR)"
-	$(DOCKER_COMPOSE) up -d opensearch opensearch-dashboards
+	$(DOCKER_COMPOSE) up -d opensearch
+	$(DOCKER_COMPOSE) --profile admin create opensearch-dashboards
+	$(DOCKER_COMPOSE) --profile admin stop opensearch-dashboards

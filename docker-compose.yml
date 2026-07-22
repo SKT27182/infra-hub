@@ -192,6 +192,7 @@ services:
   pgadmin:
     image: dpage/pgadmin4@sha256:40fa840c5bb7c8463957f1255b01283732c2d8c9396a956d180f8e6c296753b3
     container_name: infra-pgadmin
+    profiles: ["admin"]
     restart: unless-stopped
     user: "0:0"
     environment:
@@ -219,6 +220,7 @@ services:
   redisinsight:
     image: redis/redisinsight@sha256:aa21bbd198455b4ad964f76782db951155aa0d712321f599972d1525f031f0e6
     container_name: infra-redisinsight
+    profiles: ["admin"]
     restart: unless-stopped
     environment:
       RI_REDIS_HOST: redis
@@ -246,6 +248,7 @@ services:
   mongo-express:
     image: mongo-express@sha256:1b23d7976f0210dbec74045c209e52fbb26d29b2e873d6c6fa3d3f0ae32c2a64
     container_name: infra-mongo-express
+    profiles: ["admin"]
     restart: unless-stopped
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_USER}
@@ -267,6 +270,7 @@ services:
   opensearch-dashboards:
     image: opensearchproject/opensearch-dashboards@sha256:7aaefffac1660cab61ecf1e52fdcde6c156587a020dfa9246d529ea5e784dcee
     container_name: infra-opensearch-dashboards
+    profiles: ["admin"]
     restart: unless-stopped
     environment:
       OPENSEARCH_HOSTS: '["http://opensearch:9200"]'

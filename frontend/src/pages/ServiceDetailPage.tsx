@@ -61,7 +61,7 @@ export function ServiceDetailPage() {
         </div>
       </div>
 
-      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} service={service} />
 
       <Card>
         <CardHeader>

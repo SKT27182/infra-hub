@@ -133,6 +133,18 @@ async def restart_service(name: str) -> dict[str, Any]:
     return await _service_action(name, "restart")
 
 
+@router.post("/{name}/admin/start")
+async def start_service_admin(name: str) -> dict[str, Any]:
+    """Start only a service's detachable admin UI."""
+    return await _admin_action(name, "start")
+
+
+@router.post("/{name}/admin/stop")
+async def stop_service_admin(name: str) -> dict[str, Any]:
+    """Stop only a service's detachable admin UI."""
+    return await _admin_action(name, "stop")
+
+
 async def _service_action(
     name: str, action: Literal["start", "stop", "restart"]
 ) -> dict[str, Any]:
@@ -153,6 +165,31 @@ async def _service_action(
         "service": name,
         "containers": containers,
         "message": f"Service {action} completed",
+    }
+
+
+async def _admin_action(
+    name: str, action: Literal["start", "stop"]
+) -> dict[str, Any]:
+    if name not in SERVICES:
+        raise HTTPException(status_code=404, detail="Service not found")
+    try:
+        container = await SERVICES[name].admin_action(action)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    logger.info("Admin UI %s completed for %s", action, name)
+    return {
+        "success": True,
+        "action": action,
+        "service": name,
+        "containers": [container],
+        "message": f"Admin UI {action} completed",
     }
 
 

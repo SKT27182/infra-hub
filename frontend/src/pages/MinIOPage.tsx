@@ -91,7 +91,7 @@ export function MinIOPage() {
               {service.healthy ? 'Healthy' : 'Unhealthy'}
             </Badge>
           )}
-          {adminUrl && (
+          {service && adminUrl && (!service.admin || service.admin.running) && (
             <Button variant="outline" onClick={() => window.open(adminUrl, '_blank')}>
               <ExternalLink className="mr-2 h-4 w-4" />
               Console
@@ -100,7 +100,7 @@ export function MinIOPage() {
         </div>
       </div>
 
-      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} service={service} />
       {dropBucket.error && <p className="text-sm text-destructive" role="alert">{dropBucket.error.message}</p>}
 
       {/* Stats Summary */}

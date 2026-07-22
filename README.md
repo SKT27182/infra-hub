@@ -5,6 +5,7 @@ Centralized infrastructure platform for running shared Docker services once and 
 ## What this project does
 
 - Runs core services in Docker (`postgres`, `redis`, `mongodb`, `qdrant`, `opensearch`, `minio`, `neo4j`) with persistent volumes
+- Keeps detachable admin dashboards stopped until an administrator starts them from Infra Hub
 - Exposes service/admin status and control via FastAPI backend
 - Provides a React dashboard frontend with env-driven admin URLs (no hardcoded `localhost`)
 - Keeps service URLs, container names, and ports environment-driven through `backend/config.py`
@@ -33,10 +34,13 @@ Persistent service data (Postgres, Redis, MinIO, …) is bind-mounted under `INF
 - **Host ports** (e.g. `POSTGRES_PORT=54321`, `REDIS_PORT=63791`) — what you connect to from your machine
 - **Internal ports** (e.g. `MINIO_INTERNAL_CONSOLE_PORT=9001`) — ports inside the container; used in commands, healthchecks, and `host:container` mappings. Change these only when you remap both sides together.
 
-If you run Compose directly:
+Prefer `make up`, which starts the core services and pre-creates the detachable
+admin containers in a stopped state. The equivalent direct Compose sequence is:
 
 ```bash
 docker compose --env-file backend/.env up -d
+docker compose --env-file backend/.env --profile admin create pgadmin redisinsight mongo-express opensearch-dashboards
+docker compose --env-file backend/.env --profile admin stop pgadmin redisinsight mongo-express opensearch-dashboards
 ```
 
 Templates:
@@ -111,6 +115,13 @@ App projects connect to these via host ports on `127.0.0.1` (or `SERVICE_PUBLIC_
 
 All admin URLs use `SERVICE_PUBLIC_HOST` from `backend/.env` (default `127.0.0.1`). Credentials are read from `backend/.env` only — never commit real passwords; see `backend/.env.example` for the local template.
 
+pgAdmin, RedisInsight, Mongo Express, and OpenSearch Dashboards are separate,
+memory-consuming containers. Every Make-based launch resets them to stopped;
+start or stop them independently from the relevant Dashboard/Services card or
+the service's **Admin access** panel. The primary service must be running before
+its admin container can start. Qdrant, MinIO, and Neo4j expose embedded admin
+interfaces and therefore do not have a separate container toggle.
+
 | Admin UI | URL (default local) | Port env | Login / access |
 |----------|---------------------|----------|----------------|
 | pgAdmin | `http://127.0.0.1:5050` | `PGADMIN_PORT` | `PGADMIN_EMAIL` / `PGADMIN_PASSWORD` |
@@ -121,7 +132,7 @@ All admin URLs use `SERVICE_PUBLIC_HOST` from `backend/.env` (default `127.0.0.1
 | MinIO Console | `http://127.0.0.1:9001` | `MINIO_CONSOLE_PORT` | `MINIO_USER` / `MINIO_PASSWORD` |
 | Neo4j Browser | `http://127.0.0.1:7474` | `NEO4J_HTTP_PORT` | `NEO4J_USER` / `NEO4J_PASSWORD` |
 
-Service pages in the Infra Hub UI show an **Admin access** card with the same URL and login hints from the backend `get_info` API.
+Service pages in the Infra Hub UI show an **Admin access** card with the same URL, runtime controls, and login hints from the backend APIs. The Open button appears for a detachable dashboard only while its container is running.
 
 ## How to use each service
 
@@ -217,13 +228,14 @@ flowchart TB
 4. Backend returns `503` when the user database is unavailable (instead of misleading `401` loops).
 5. After `make clean-hard`, run `make up` then `make dev-local` so containers and local processes are fresh.
 6. All active database-provisioned users are equally privileged infrastructure administrators. There is no signup or user-management UI/API.
-7. Stop actions stop containers (including configured admin companions); they do not remove images or persistent data.
+7. Primary service start/stop/restart actions remain grouped with configured admin companions. The separate Admin UI control changes only the companion container.
+8. Every `make up`, `make dev`, `make dev-local`, or per-service startup resets detachable admin containers to stopped; it does not remove their images or persistent data.
 
 ## Make commands
 
 ```bash
 make install      # uv sync + pnpm install
-make up           # start all Docker services + print-urls
+make up           # start core services; create admin dashboards stopped
 make down         # stop Docker services + local backend/frontend pids
 make dev          # run infra services in Docker (alias: up)
 make dev-local    # Docker infra + local backend/frontend

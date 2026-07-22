@@ -102,7 +102,7 @@ export function Neo4jPage() {
               {service.healthy ? 'Healthy' : 'Unhealthy'}
             </Badge>
           )}
-          {adminUrl && (
+          {service && adminUrl && (!service.admin || service.admin.running) && (
             <Button variant="outline" onClick={() => window.open(adminUrl, '_blank')}>
               <ExternalLink className="mr-2 h-4 w-4" />
               Open Neo4j Browser
@@ -111,7 +111,7 @@ export function Neo4jPage() {
         </div>
       </div>
 
-      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} service={service} />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>

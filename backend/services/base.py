@@ -26,6 +26,16 @@ class ServiceStatus(BaseModel):
     status: str = "unknown"
     ports: list[str] = []
     admin_url: str | None = None
+    admin: "AdminContainerStatus | None" = None
+
+
+class AdminContainerStatus(BaseModel):
+    """Runtime status for a detachable admin UI container."""
+
+    container_name: str
+    running: bool
+    healthy: bool
+    status: str = "unknown"
 
 
 class BaseService(ABC):
@@ -51,6 +61,7 @@ class BaseService(ABC):
     def get_status(self) -> ServiceStatus:
         """Get current service status from Docker."""
         container = DockerClient.get_container(self.container_name)
+        admin = self._get_admin_status()
 
         if container is None:
             logger.debug("Container not found for service %s", self.name)
@@ -61,6 +72,7 @@ class BaseService(ABC):
                 healthy=False,
                 status="not_found",
                 admin_url=self.admin_url,
+                admin=admin,
             )
 
         # Parse container status
@@ -94,6 +106,30 @@ class BaseService(ABC):
             status=status,
             ports=ports,
             admin_url=self.admin_url,
+            admin=admin,
+        )
+
+    def _get_admin_status(self) -> AdminContainerStatus | None:
+        """Get status for the configured detachable admin UI, if any."""
+        if not self.admin_container:
+            return None
+        container = DockerClient.get_container(self.admin_container)
+        if container is None:
+            return AdminContainerStatus(
+                container_name=self.admin_container,
+                running=False,
+                healthy=False,
+                status="not_found",
+            )
+        status = container.status
+        running = status == "running"
+        health_info = container.attrs.get("State", {}).get("Health", {})
+        healthy = health_info.get("Status") == "healthy" if health_info else running
+        return AdminContainerStatus(
+            container_name=self.admin_container,
+            running=running,
+            healthy=healthy,
+            status=status,
         )
 
     @abstractmethod
@@ -118,9 +154,14 @@ class BaseService(ABC):
         failures: list[tuple[str, Exception]] = []
         for target in targets:
             try:
+                target_action = action
+                if action == "restart" and target == self.admin_container:
+                    admin = DockerClient.get_container(target)
+                    if admin is not None and admin.status != "running":
+                        target_action = "start"
                 results.append(
                     await DockerClient.perform_action(
-                        target, action, allow_already_target=True
+                        target, target_action, allow_already_target=True
                     )
                 )
             except (LookupError, RuntimeError, TimeoutError, ValueError) as exc:
@@ -136,6 +177,22 @@ class BaseService(ABC):
                 raise LookupError(f"Infra Hub container not found: {names}")
             raise RuntimeError(f"Container action failed for: {names}")
         return results
+
+    async def admin_action(
+        self, action: Literal["start", "stop"]
+    ) -> dict[str, Any]:
+        """Start or stop only the detachable admin UI container."""
+        if not self.admin_container:
+            raise LookupError(f"Service {self.name} has no separate admin container")
+        if action == "start":
+            primary = DockerClient.get_container(self.container_name)
+            if primary is None or primary.status != "running":
+                raise ValueError(
+                    f"Service {self.name} must be running before its admin UI can start"
+                )
+        return await DockerClient.perform_action(
+            self.admin_container, action, allow_already_target=True
+        )
 
     def get_logs(self, tail: int = 100) -> str:
         """Get service container logs."""

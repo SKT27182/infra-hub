@@ -39,6 +39,14 @@ export interface ServiceStatus {
   status: string
   ports: string[]
   admin_url: string | null
+  admin: AdminContainerStatus | null
+}
+
+export interface AdminContainerStatus {
+  container_name: string
+  running: boolean
+  healthy: boolean
+  status: string
 }
 
 export interface AllServicesResponse {
@@ -141,6 +149,16 @@ export async function stopService(name: string): Promise<ServiceAction> {
 
 export async function restartService(name: string): Promise<ServiceAction> {
   const res = await fetchWithAuth(`${API_BASE}/services/${name}/restart`, { method: 'POST' })
+  return res.json()
+}
+
+export async function startServiceAdmin(name: string): Promise<ServiceAction> {
+  const res = await fetchWithAuth(`${API_BASE}/services/${name}/admin/start`, { method: 'POST' })
+  return res.json()
+}
+
+export async function stopServiceAdmin(name: string): Promise<ServiceAction> {
+  const res = await fetchWithAuth(`${API_BASE}/services/${name}/admin/stop`, { method: 'POST' })
   return res.json()
 }
 

@@ -7,6 +7,8 @@ import {
   startService,
   stopService,
   restartService,
+  startServiceAdmin,
+  stopServiceAdmin,
   getServiceLogs,
   getInfraContainers,
   type ServiceStatus,
@@ -90,4 +92,28 @@ export function useServiceActions(name: string) {
   })
 
   return { start, stop, restart }
+}
+
+export function useAdminActions(name: string) {
+  const queryClient = useQueryClient()
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['services'] })
+    queryClient.invalidateQueries({ queryKey: ['service', name] })
+    queryClient.invalidateQueries({ queryKey: ['service-info', name] })
+    queryClient.invalidateQueries({ queryKey: ['service-health', name] })
+    queryClient.invalidateQueries({ queryKey: ['containers'] })
+  }
+
+  const start = useMutation({
+    mutationFn: () => startServiceAdmin(name),
+    onSuccess: invalidate,
+  })
+
+  const stop = useMutation({
+    mutationFn: () => stopServiceAdmin(name),
+    onSuccess: invalidate,
+  })
+
+  return { start, stop }
 }

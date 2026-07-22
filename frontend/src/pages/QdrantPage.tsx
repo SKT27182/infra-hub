@@ -83,7 +83,7 @@ export function QdrantPage() {
               {service.healthy ? 'Healthy' : 'Unhealthy'}
             </Badge>
           )}
-          {adminUrl && (
+          {service && adminUrl && (!service.admin || service.admin.running) && (
             <Button variant="outline" onClick={() => window.open(adminUrl, '_blank')}>
               <ExternalLink className="mr-2 h-4 w-4" />
               Dashboard
@@ -92,7 +92,7 @@ export function QdrantPage() {
         </div>
       </div>
 
-      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} service={service} />
       {dropCollection.error && <p className="text-sm text-destructive" role="alert">{dropCollection.error.message}</p>}
 
       {/* Collections */}

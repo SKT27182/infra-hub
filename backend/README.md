@@ -63,7 +63,20 @@ make dev-backend
 
 ## Admin access API
 
-Each service `get_info()` response may include an `admin_access` block (URL, instructions, optional `login` map, `api_key_required` for Qdrant). The frontend **Admin access** card reads this alongside `service.admin_url` from the services list API.
+Each service status includes `admin_url` and an optional `admin` runtime object.
+The object is present for pgAdmin, RedisInsight, Mongo Express, and OpenSearch
+Dashboards and contains `container_name`, `running`, `healthy`, and `status`.
+Embedded admin interfaces return `admin: null`.
+
+Authenticated admin-container actions are available at:
+
+- `POST /api/v2/services/{name}/admin/start`
+- `POST /api/v2/services/{name}/admin/stop`
+
+Starting an admin container requires its primary service to be running. These
+endpoints affect only the admin container; the existing service actions remain
+grouped. Each service `get_info()` response may also include an `admin_access`
+block with URL, instructions, optional login metadata, and Qdrant API-key hints.
 
 ## Notes
 

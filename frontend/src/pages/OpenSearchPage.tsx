@@ -81,7 +81,7 @@ export function OpenSearchPage() {
               {service.healthy ? 'Healthy' : 'Unhealthy'}
             </Badge>
           )}
-          {adminUrl && (
+          {service && adminUrl && (!service.admin || service.admin.running) && (
             <Button variant="outline" onClick={() => window.open(adminUrl, '_blank')}>
               <ExternalLink className="mr-2 h-4 w-4" />
               Open Dashboards
@@ -90,7 +90,7 @@ export function OpenSearchPage() {
         </div>
       </div>
 
-      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} />
+      <AdminAccessCard adminUrl={adminUrl} adminAccess={adminAccess} service={service} />
       {dropIndex.error && <p className="text-sm text-destructive" role="alert">{dropIndex.error.message}</p>}
 
       <div className="grid gap-4 sm:grid-cols-3">

@@ -17,7 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useServiceActions, useServiceInfo } from '@/hooks'
+import { useAdminActions, useServiceActions, useServiceInfo } from '@/hooks'
 import type { ServiceStatus } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useNavigate } from 'react-router-dom'
@@ -39,9 +39,12 @@ interface ServiceCardProps {
 
 export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
   const { start, stop, restart } = useServiceActions(service.name)
+  const { start: startAdmin, stop: stopAdmin } = useAdminActions(service.name)
   const { data: infoData } = useServiceInfo(service.name)
   const isLoading = start.isPending || stop.isPending || restart.isPending
   const actionError = start.error || stop.error || restart.error
+  const adminLoading = startAdmin.isPending || stopAdmin.isPending
+  const adminError = startAdmin.error || stopAdmin.error
   const [copied, setCopied] = useState(false)
   const navigate = useNavigate()
 
@@ -188,7 +191,7 @@ export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
                   </>
                 )}
 
-                {service.admin_url && (
+                {service.admin_url && !service.admin && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -207,9 +210,63 @@ export function ServiceCard({ service, showActions = true }: ServiceCardProps) {
               </div>
             </TooltipProvider>
           )}
+          {showActions && service.admin && (
+            <div
+              className="flex flex-wrap items-center gap-2 border-t pt-3"
+              onClick={e => e.stopPropagation()}
+            >
+              <span className="text-sm font-medium">Admin UI</span>
+              <Badge variant={service.admin.running ? 'default' : 'secondary'}>
+                {service.admin.running ? 'Running' : 'Stopped'}
+              </Badge>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="ml-auto">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={adminLoading || (!service.admin.running && !service.running)}
+                        onClick={() => service.admin?.running ? stopAdmin.mutate() : startAdmin.mutate()}
+                      >
+                        {adminLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : service.admin.running ? (
+                          <Square className="h-4 w-4" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                        <span className="ml-1">{service.admin.running ? 'Stop' : 'Start'}</span>
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {!service.admin.running && !service.running
+                      ? 'Start the primary service first'
+                      : `${service.admin.running ? 'Stop' : 'Start'} admin UI`}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {service.admin_url && service.admin.running && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => window.open(service.admin_url!, '_blank')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span className="ml-1">Open</span>
+                </Button>
+              )}
+            </div>
+          )}
           {actionError && (
             <p className="text-xs text-destructive" role="alert">
               {actionError instanceof Error ? actionError.message : 'Container action failed'}
+            </p>
+          )}
+          {adminError && (
+            <p className="text-xs text-destructive" role="alert">
+              {adminError instanceof Error ? adminError.message : 'Admin UI action failed'}
             </p>
           )}
         </div>
