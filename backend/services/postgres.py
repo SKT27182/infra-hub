@@ -114,8 +114,9 @@ class PostgresService(BaseService):
             await conn.execute("SET statement_timeout = '10s'")
             statement = await asyncio.wait_for(conn.prepare(sql), timeout=10)
             if statement.get_attributes():
+                # statement.cursor() returns a CursorFactory; await it to get a Cursor.
                 async with conn.transaction():
-                    cursor = statement.cursor()
+                    cursor = await statement.cursor()
                     rows = await asyncio.wait_for(cursor.fetch(501), timeout=10)
                 truncated = len(rows) > 500
                 rows = rows[:500]
@@ -137,7 +138,12 @@ class PostgresService(BaseService):
         except TimeoutError:
             return {"success": False, "error": "Query timed out", "database": target_db}
         except Exception as e:
-            logger.error("Postgres query failed on %s (%s)", target_db, type(e).__name__)
+            logger.error(
+                "Postgres query failed on %s (%s: %s)",
+                target_db,
+                type(e).__name__,
+                e,
+            )
             return {"success": False, "error": "Query failed", "database": target_db}
         finally:
             if conn is not None:

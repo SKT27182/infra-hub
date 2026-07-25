@@ -84,6 +84,17 @@ def test_short_signing_secret_is_rejected(monkeypatch: pytest.MonkeyPatch) -> No
         Settings()  # type: ignore[call-arg]
 
 
+def test_postgres_defaults_to_ipv4_loopback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("POSTGRES_HOST", raising=False)
+
+    configured = Settings()  # type: ignore[call-arg]
+
+    assert configured.postgres_host == "127.0.0.1"
+    assert "@127.0.0.1:" in configured.postgres_url
+
+
 @pytest.mark.asyncio
 async def test_login_sets_strict_httponly_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
     user = {

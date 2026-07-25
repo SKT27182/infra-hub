@@ -87,7 +87,10 @@ class Settings(BaseSettings):
     pgadmin_container_name: str = "infra-pgadmin"
     pgadmin_port: int = 5050
     pgadmin_password: str
-    postgres_host: str = "localhost"
+    # Docker publishes the database on the IPv4 loopback by default. Using the
+    # hostname can resolve to ::1 first, where an unrelated local process may
+    # be listening even though 127.0.0.1 is correctly mapped to PostgreSQL.
+    postgres_host: str = "127.0.0.1"
     postgres_port: int = 54321
     postgres_user: str
     postgres_password: str
