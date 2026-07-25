@@ -57,3 +57,7 @@ explicit_package_bases = true
 [tool.pytest.ini_options]
 pythonpath = ["."]
 asyncio_mode = "auto"
+
+[tool.bandit]
+# Explicit -c pyproject.toml is required for this section to apply.
+exclude_dirs = [".venv", "tests", ".mypy_cache", ".pytest_cache", ".ruff_cache"]

@@ -21,7 +21,7 @@ jobs:
       - run: uv run pytest -q
       - run: uv export --frozen --no-dev --format requirements-txt --output-file /tmp/infra-hub-requirements.txt
       - run: uvx pip-audit -r /tmp/infra-hub-requirements.txt
-      - run: uvx bandit -r . -ll -x .venv,tests
+      - run: uvx --from 'bandit[toml]' bandit -c pyproject.toml -r . -ll
 
   frontend:
     runs-on: ubuntu-latest
