@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Generator
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -21,7 +22,7 @@ class _CursorFactory:
     def __init__(self, cursor: AsyncMock) -> None:
         self._cursor = cursor
 
-    def __await__(self):
+    def __await__(self) -> Generator[Any, None, AsyncMock]:
         async def _resolve() -> AsyncMock:
             return self._cursor
 
@@ -42,7 +43,7 @@ async def test_query_select_awaits_cursor_factory_before_fetch() -> None:
     statement.cursor = MagicMock(return_value=_CursorFactory(cursor))
 
     @asynccontextmanager
-    async def transaction():
+    async def transaction() -> AsyncIterator[None]:
         yield
 
     conn = AsyncMock()

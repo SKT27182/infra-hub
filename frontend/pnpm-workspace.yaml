@@ -1,3 +1,9 @@
 allowBuilds:
   # Vite requires esbuild's install script to prepare its native binary.
   esbuild: true
+
+# Declarative BrowserRouter only — GHSA-qwww-vcr4-c8h2 is limited to unstable RSC APIs.
+# react-router-dom has no 7.x patch; 8.3.0 requires a major upgrade + React >=19.2.7.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-qwww-vcr4-c8h2

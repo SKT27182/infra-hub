@@ -17,13 +17,14 @@ function resolveAllowedHosts(env: Record<string, string>): string[] {
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const port = Number(env.VITE_PORT)
+  // Default matches frontend/.env.example so CI/production builds work without a local .env.
+  const port = Number(env.VITE_PORT || '5143')
   const apiTarget = env.VITE_DEV_API_TARGET
   const host = env.VITE_HOST || '127.0.0.1'
   const allowedHosts = resolveAllowedHosts(env)
 
   if (!Number.isInteger(port) || port <= 0) {
-    throw new Error('VITE_PORT must be set to a valid port number in .env')
+    throw new Error('VITE_PORT must be a valid port number')
   }
 
   return {
